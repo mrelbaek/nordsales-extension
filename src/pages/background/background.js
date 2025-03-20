@@ -1,0 +1,1 @@
+import './pages/background/index.js';

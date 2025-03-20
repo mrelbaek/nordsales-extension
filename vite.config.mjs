@@ -8,15 +8,20 @@ const manifest = JSON.parse(fs.readFileSync(new URL("./manifest.json", import.me
 export default defineConfig({
   plugins: [
     react(),
-    crx({
-      manifest,
-      contentAssets: ["src/assets/**/*", "src/service-worker.js"]
-    })
+    crx({ manifest })
   ],
-  server: {
-    headers: {
-      "Access-Control-Allow-Origin": "chrome-extension://neknkeieigbdolchlfadblpnilnjoghg"
-    },
-    cors: true
+  build: {
+    rollupOptions: {
+      input: {
+        popup: "src/pages/popup/main.jsx" // ✅ Do NOT include service-worker.js here!
+      },
+      output: {
+        manualChunks(id) {
+          if (id.includes("service-worker.js")) {
+            return false; // ✅ Prevents bundling of the service worker
+          }
+        }
+      }
+    }
   }
 });

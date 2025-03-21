@@ -2,20 +2,43 @@
   "manifest_version": 3,
   "name": "NordSales Extension",
   "version": "1.0.0",
-  "description": "Chrome extension built with React and Vite",
-  "permissions": [
-    "identity",
-    "storage"
-  ],
-  "host_permissions": [
-    "https://orga6a657bc.crm.dynamics.com/*"
-  ],
+  "description": "Chrome extension for Dynamics Sales",
+  "action": {
+    "default_title": "NordSales"
+  },
+  "options_page": "options.html",
   "background": {
-    "service_worker": "service-worker-loader.js",
+    "service_worker": "service-worker.js",
     "type": "module"
   },
-  "action": {
-    "default_popup": "src/pages/popup/index.html"
+  "permissions": [
+    "identity",
+    "storage",
+    "activeTab",
+    "scripting",
+    "tabs",
+    "sidePanel"
+  ],
+  "host_permissions": [
+    "https://*.crm.dynamics.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.crm.dynamics.com/*"
+      ],
+      "js": [
+        "contentScript.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "side_panel": {
+    "default_path": "popup.html"
   },
-  "options_page": "src/pages/options/index.html"
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
 }

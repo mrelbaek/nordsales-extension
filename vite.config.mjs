@@ -9,34 +9,48 @@ import fs from "fs";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const manifest = JSON.parse(fs.readFileSync(new URL("./manifest.json", import.meta.url), "utf-8"));
+// Create a manifest for build without content scripts
+// This will be created by the create-build-manifest.js script
+const manifestPath = path.resolve(__dirname, "build-manifest.json");
+let manifest;
+
+try {
+  manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
+} catch (error) {
+  console.error("Unable to read build-manifest.json. Run create-build-manifest.js first!");
+  // Use the original manifest as a fallback, but this might cause build errors
+  const originalManifestPath = path.resolve(__dirname, "manifest.json");
+  manifest = JSON.parse(fs.readFileSync(originalManifestPath, "utf-8"));
+}
 
 export default defineConfig({
   plugins: [
     react(),
-    crx({ manifest })
+    crx({ manifest }),
   ],
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./src") // This will now work correctly
-    }
+      "@": path.resolve(__dirname, "./src"),
+    },
   },
   build: {
+    outDir: "dist",
     rollupOptions: {
       input: {
-        popup: "src/pages/popup/main.jsx",
-        "service-worker": "service-worker.js"
+        // Just build the main React component
+        popup: path.resolve(__dirname, "src/pages/popup/main.jsx"),
       },
       output: {
-        dir: "dist",
-        entryFileNames: "[name].js"
-      }
-    }
+        entryFileNames: '[name].js',
+        chunkFileNames: '[name].js',
+        assetFileNames: '[name].[ext]',
+      },
+    },
   },
   server: {
     headers: {
-      "Access-Control-Allow-Origin": "*"
+      "Access-Control-Allow-Origin": "*",
     },
-    cors: true
-  }
+    cors: true,
+  },
 });

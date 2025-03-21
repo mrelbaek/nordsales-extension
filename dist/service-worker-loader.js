@@ -1,1 +1,1 @@
-import './service-worker.js';
+import './service-worker.js.js';

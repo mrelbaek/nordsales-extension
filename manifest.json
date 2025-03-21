@@ -3,18 +3,13 @@
     "name": "NordSales Extension",
     "version": "1.0.0",
     "description": "Chrome extension built with React and Vite",
-    "action": {
-      "default_popup": "src/pages/popup/index.html"
-    },
-    "options_page": "src/pages/options/index.html",
+    "permissions": ["identity", "storage"],
+    "host_permissions": ["https://orga6a657bc.crm.dynamics.com/*"],
     "background": {
-      "service_worker": "service-worker.js",
-      "type": "module"
+        "service_worker": "service-worker.js"
     },
-    "permissions": ["storage"],
-      "icons": {
-        "16": "icon16.png",
-        "48": "icon48.png",
-        "128": "icon128.png"
-    }
-  }
+    "action": {
+        "default_popup": "src/pages/popup/index.html"
+    },
+    "options_page": "src/pages/options/index.html"
+}

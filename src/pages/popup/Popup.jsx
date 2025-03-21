@@ -1,36 +1,59 @@
-import React, { useState, useEffect } from 'react'
+import React, { useEffect, useState } from "react";
+import { login, getAccessToken } from "@/utils/auth";
 
-function Popup() {
-  const [count, setCount] = useState(0)
-  
-  useEffect(() => {
-    // Load count from storage
-    chrome.storage.local.get(['count'], (result) => {
-      if (result.count !== undefined) {
-        setCount(result.count)
-      }
-    })
-  }, [])
-  
-  const incrementCount = () => {
-    const newCount = count + 1
-    setCount(newCount)
-    chrome.storage.local.set({ count: newCount })
-  }
+const API_URL = "https://orga6a657bc.crm.dynamics.com/api/data/v9.0/opportunities?$top=5";
 
-  return (
-    <div className="popup">
-      <h1>NordSales Extension</h1>
-      <div className="card">
-        <button onClick={incrementCount}>
-          Count is {count}
-        </button>
-        <p>
-          Edit <code>src/pages/popup/Popup.jsx</code> and save to test
-        </p>
-      </div>
-    </div>
-  )
-}
+const Popup = () => {
+    const [data, setData] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(null);
 
-export default Popup
+    useEffect(() => {
+        async function fetchData() {
+            setLoading(true);
+            try {
+                const token = await getAccessToken();
+                if (!token) throw new Error("No access token available");
+
+                const response = await fetch(API_URL, {
+                    method: "GET",
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        "Content-Type": "application/json",
+                    },
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API request failed: ${response.statusText}`);
+                }
+
+                const result = await response.json();
+                setData(result.value);
+            } catch (err) {
+                setError(err.message);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        fetchData();
+    }, []);
+
+    return (
+        <div>
+            <h2>NordSales Extension</h2>
+            <button onClick={login}>Sign in with Microsoft</button>
+            {loading && <p>Loading opportunities...</p>}
+            {error && <p style={{ color: "red" }}>Error: {error}</p>}
+            {data && (
+                <ul>
+                    {data.map((opportunity) => (
+                        <li key={opportunity.opportunityid}>{opportunity.name}</li>
+                    ))}
+                </ul>
+            )}
+        </div>
+    );
+};
+
+export default Popup;

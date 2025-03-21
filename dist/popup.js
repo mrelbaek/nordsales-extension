@@ -1,0 +1,1 @@
+import{c as t,j as e,R as o}from"./assets/jsx-runtime.91c62a54.js";import{P as r}from"./assets/popup.37be5ef1.js";t.createRoot(document.getElementById("root")).render(e(o.StrictMode,{children:e(r,{})}));

@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Authenticating...</title>
+</head>
+<body>
+    <script>
+        const params = new URLSearchParams(window.location.hash.substring(1));
+        const accessToken = params.get("access_token");
+
+        if (accessToken) {
+            chrome.storage.local.set({ accessToken }, () => {
+                console.log("✅ Access token saved!");
+                window.close();
+            });
+        } else {
+            console.error("❌ Authentication failed");
+            window.close();
+        }
+    </script>
+</body>
+</html>

@@ -4,15 +4,119 @@ console.log("NordSales service worker initialized");
 // Track the currently active tab with Dynamics CRM
 let currentDynamicsTab = null;
 
+// Store tab polling intervals
+const tabPollingIntervals = {};
+
+// Check for opportunity ID in a tab and handle changes
+function pollForOpportunityChanges(tabId) {
+  // Check if tab still exists
+  chrome.tabs.get(tabId).then(tab => {
+    if (tab && tab.url && tab.url.includes('crm.dynamics.com')) {
+      // Tab exists and is a Dynamics CRM page, check for opportunity ID
+      chrome.tabs.sendMessage(tabId, { type: "CHECK_OPPORTUNITY_ID" }, response => {
+        // Check for error first to properly handle message channel closing
+        if (chrome.runtime.lastError) {
+          console.log("Message error:", chrome.runtime.lastError.message);
+          
+          // Try to re-inject the content script since it might have been invalidated
+          chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            files: ['contentScript.js']
+          }).catch(err => {
+            console.log("Error re-injecting content script:", err);
+          });
+          return;
+        }
+        
+        // Only proceed if we have a valid response
+        if (response && response.opportunityId) {
+          // We have an opportunity ID, check if it's new
+          chrome.storage.local.get(['currentOpportunityId'], result => {
+            if (result.currentOpportunityId !== response.opportunityId) {
+              // New opportunity ID, update storage and notify
+              chrome.storage.local.set({
+                currentOpportunityId: response.opportunityId,
+                lastUpdated: Date.now(),
+                currentUrl: response.url
+              });
+              
+              // Notify the side panel
+              chrome.runtime.sendMessage({
+                type: "OPPORTUNITY_DETECTED",
+                opportunityId: response.opportunityId,
+                timestamp: Date.now()
+              }).catch(() => {
+                // Ignore errors if side panel isn't open
+              });
+            }
+          });
+        } else {
+          // No opportunity ID, check if we need to clear
+          chrome.storage.local.get(['currentOpportunityId'], result => {
+            if (result.currentOpportunityId) {
+              // Had an ID but now don't, clear it
+              chrome.storage.local.remove(['currentOpportunityId', 'lastUpdated']);
+              
+              // Notify the side panel
+              chrome.runtime.sendMessage({
+                type: "OPPORTUNITY_CLEARED",
+                timestamp: Date.now()
+              }).catch(() => {
+                // Ignore errors if side panel isn't open
+              });
+            }
+          });
+        }
+      });
+    } else {
+      // Tab no longer exists or isn't a Dynamics page, stop polling
+      if (tabPollingIntervals[tabId]) {
+        clearInterval(tabPollingIntervals[tabId]);
+        delete tabPollingIntervals[tabId];
+      }
+    }
+  }).catch(() => {
+    // Tab doesn't exist anymore, clean up
+    if (tabPollingIntervals[tabId]) {
+      clearInterval(tabPollingIntervals[tabId]);
+      delete tabPollingIntervals[tabId];
+    }
+  });
+}
+
+// Set up polling for a tab
+function startOpportunityPolling(tabId) {
+  // Clear any existing interval for this tab
+  if (tabPollingIntervals[tabId]) {
+    clearInterval(tabPollingIntervals[tabId]);
+  }
+  
+  // Set up a new polling interval
+  tabPollingIntervals[tabId] = setInterval(() => {
+    pollForOpportunityChanges(tabId);
+  }, 1000); // Check every second
+}
+
 // Listen for tab updates
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === 'complete' && tab.url && tab.url.includes('crm.dynamics.com')) {
     currentDynamicsTab = tabId;
     console.log("Dynamics CRM tab updated:", tabId);
     
-    // Instead of trying to auto-open the panel, display a badge notification
+    // Inject content script and start polling
+    chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      files: ['contentScript.js']
+    }).then(() => {
+      // Start polling this tab
+      startOpportunityPolling(tabId);
+    }).catch(err => {
+      console.error("Error injecting content script:", err);
+    });
+    
+    // Show notification badge
     chrome.storage.local.get(['autoOpen'], (result) => {
-      if (result.autoOpen) {
+      if (result.autoOpen !== false) {
         chrome.action.setBadgeText({ text: "!" });
         chrome.action.setBadgeBackgroundColor({ color: "#0078d4" });
       }
@@ -23,16 +127,11 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   }
 });
 
-// Listen for tab activation
-chrome.tabs.onActivated.addListener(async (activeInfo) => {
-  try {
-    const tab = await chrome.tabs.get(activeInfo.tabId);
-    if (tab.url && tab.url.includes('crm.dynamics.com')) {
-      currentDynamicsTab = activeInfo.tabId;
-      console.log("Dynamics CRM tab activated:", activeInfo.tabId);
-    }
-  } catch (err) {
-    console.error("Error getting tab info:", err);
+// Clean up polling when tabs are closed
+chrome.tabs.onRemoved.addListener((tabId) => {
+  if (tabPollingIntervals[tabId]) {
+    clearInterval(tabPollingIntervals[tabId]);
+    delete tabPollingIntervals[tabId];
   }
 });
 
@@ -82,34 +181,38 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     
     // If we know of an active Dynamics tab, check for opportunity
     if (currentDynamicsTab) {
-      try {
-        chrome.tabs.sendMessage(currentDynamicsTab, { type: "GET_OPPORTUNITY_ID" }, (response) => {
-          if (chrome.runtime.lastError) {
-            console.log("Could not communicate with content script:", chrome.runtime.lastError);
-            return;
-          }
-          
-          if (response && response.opportunityId) {
-            console.log("Got opportunity ID from content script:", response.opportunityId);
+      // Check tab still exists before sending message
+      chrome.tabs.get(currentDynamicsTab).then(tab => {
+        if (tab && tab.url && tab.url.includes('crm.dynamics.com')) {
+          chrome.tabs.sendMessage(currentDynamicsTab, { type: "CHECK_OPPORTUNITY_ID" }, response => {
+            // Check for error first
+            if (chrome.runtime.lastError) {
+              console.log("Error communicating with content script:", chrome.runtime.lastError.message);
+              return;
+            }
             
-            // Store and forward to side panel
-            chrome.storage.local.set({ 
-              currentOpportunityId: response.opportunityId,
-              lastUpdated: Date.now() 
-            });
-            
-            chrome.runtime.sendMessage({
-              type: "OPPORTUNITY_DETECTED",
-              opportunityId: response.opportunityId,
-              timestamp: Date.now()
-            }).catch(err => {
-              console.log("Could not send to side panel:", err);
-            });
-          }
-        });
-      } catch (err) {
-        console.error("Error checking for opportunity:", err);
-      }
+            if (response && response.opportunityId) {
+              console.log("Got opportunity ID from content script:", response.opportunityId);
+              
+              // Store and forward to side panel
+              chrome.storage.local.set({ 
+                currentOpportunityId: response.opportunityId,
+                lastUpdated: Date.now() 
+              });
+              
+              chrome.runtime.sendMessage({
+                type: "OPPORTUNITY_DETECTED",
+                opportunityId: response.opportunityId,
+                timestamp: Date.now()
+              }).catch(err => {
+                console.log("Could not send to side panel:", err);
+              });
+            }
+          });
+        }
+      }).catch(err => {
+        console.log("Tab no longer exists:", err);
+      });
     }
   }
   else if (message.type === "SET_AUTO_OPEN") {

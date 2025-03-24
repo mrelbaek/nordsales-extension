@@ -137,14 +137,18 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 
 // When the extension icon is clicked
 chrome.action.onClicked.addListener((tab) => {
-  // Open the side panel in response to user action (this is allowed)
-  chrome.sidePanel.open({ tabId: tab.id }).then(() => {
-    // Clear the notification badge after opening
-    chrome.action.setBadgeText({ text: "" });
-  }).catch(err => {
-    console.error("Error opening side panel:", err);
+    // Open the side panel in response to user action
+    try {
+      chrome.sidePanel.open({ tabId: tab.id }).then(() => {
+        // Clear the notification badge after opening
+        chrome.action.setBadgeText({ text: "" });
+      }).catch(err => {
+        console.error("Error opening side panel:", err);
+      });
+    } catch (error) {
+      console.error("Error in onClicked handler:", error);
+    }
   });
-});
 
 // Listen for messages from content script or popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {

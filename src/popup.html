@@ -1,12 +1,470 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>NordSales Extension</title>
+  <style>
+    /* Main container */
+    .popup-container {
+      padding: 0;
+      font-family: Arial, sans-serif;
+      height: 100%;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      background-color: #f9f9f9;
+    }
+
+    /* Header styles */
+    .header {
+      padding: 16px;
+      border-bottom: 1px solid #e0e0e0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background-color: white;
+    }
+
+    .header h2 {
+      margin: 0 0 4px 0;
+      font-size: 18px;
+    }
+
+    .header-subtitle {
+      font-size: 13px;
+      color: #666;
+    }
+
+    /* Button styles */
+    .btn {
+      cursor: pointer;
+      border-radius: 4px;
+      font-size: 13px;
+    }
+
+    .btn-back {
+      padding: 6px 12px;
+      background-color: #f0f0f0;
+      border: 1px solid #ccc;
+      margin-right: 8px;
+    }
+
+    .btn-logout {
+      padding: 6px 12px;
+      background-color: #f0f0f0;
+      border: 1px solid #ccc;
+    }
+
+    .btn-primary {
+      padding: 10px 16px;
+      background-color: #0078d4;
+      color: white;
+      border: none;
+      font-weight: bold;
+      width: 100%;
+      max-width: 300px;
+    }
+
+    /* Action bar and icons */
+    .action-bar {
+      padding: 12px 16px;
+      display: flex;
+      gap: 8px;
+      border-bottom: 1px solid #e0e0e0;
+      background-color: white;
+    }
+
+    .icon-button {
+      border: none;
+      background: none;
+      cursor: pointer;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      font-size: 20px;
+    }
+
+    /* Main content area */
+    .content-area {
+      flex: 1;
+      overflow: auto;
+      padding: 0 16px 16px 16px;
+    }
+
+    /* Action buttons */
+    .action-buttons {
+      display: flex;
+      gap: 10px;
+      margin: 16px 0;
+    }
+
+    .action-buttons button {
+      flex: 1;
+      padding: 10px 0;
+      background-color: white;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    /* Card and section styles */
+    .card {
+      margin-bottom: 16px;
+      background-color: white;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .section-header {
+      padding: 12px 16px;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #e0e0e0;
+    }
+
+    .section-header.collapsed {
+      border-bottom: none;
+    }
+
+    .section-title {
+      display: flex;
+      align-items: center;
+    }
+
+    .section-title h3 {
+      margin: 0;
+      font-size: 16px;
+    }
+
+    .section-content {
+      padding: 16px;
+    }
+
+    /* Statistics section */
+    .stat-item {
+      display: flex;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .icon-container {
+      width: 24px;
+      height: 24px;
+      margin-right: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .icon-container img {
+      width: 18px;
+      height: 18px;
+      object-fit: contain;
+    }
+
+    /* Calendar styles */
+    .calendar-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 16px;
+      align-items: center;
+    }
+
+    .calendar-nav-button {
+      border: none;
+      background: none;
+      cursor: pointer;
+      font-size: 16px;
+    }
+
+    .calendar-header h4 {
+      margin: 0;
+    }
+
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      text-align: center;
+      font-weight: bold;
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 8px;
+    }
+
+    .calendar-week {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 4px;
+      margin-bottom: 4px;
+    }
+
+    .calendar-day {
+      height: 30px;
+      text-align: center;
+      position: relative;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 14px;
+      border-radius: 50%;
+    }
+
+    .calendar-day.today {
+      background-color: #e91e63;
+      color: white;
+    }
+
+    .calendar-day.has-activities {
+      cursor: pointer;
+      border: 2px solid #4285F4;
+    }
+
+    .activity-indicator {
+      position: absolute;
+      bottom: -2px;
+      right: -2px;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background-color: #4285F4;
+    }
+
+    /* Activities display */
+    .activity-list {
+      margin-top: 16px;
+    }
+
+    .activity-item {
+      padding: 8px;
+      border-left: 4px solid;
+      background-color: #f5f5f5;
+      margin-bottom: 8px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+    }
+
+    .activity-item-content {
+      flex: 1;
+    }
+
+    .activity-title {
+      font-weight: bold;
+    }
+
+    .activity-type {
+      font-size: 12px;
+    }
+
+    .activity-time {
+      font-size: 12px;
+      color: #666;
+    }
+
+    .clear-selection {
+      border: none;
+      background: none;
+      color: #0078d4;
+      cursor: pointer;
+      padding: 4px 0;
+      text-decoration: underline;
+      font-size: 13px;
+    }
+
+    /* Analytics section */
+    .analytics-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .analytics-tile {
+      background-color: #f5f5f5;
+      padding: 16px;
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .analytics-label {
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 8px;
+    }
+
+    .analytics-value {
+      font-size: 28px;
+      font-weight: bold;
+      margin-bottom: 4px;
+    }
+
+    .analytics-unit {
+      font-size: 12px;
+      color: #666;
+    }
+
+    .analytics-avg {
+      font-size: 12px;
+      color: #666;
+      margin-top: 4px;
+    }
+
+    /* Timeline styles */
+    .timeline {
+      position: relative;
+    }
+
+    .timeline-item {
+      position: relative;
+      padding-left: 30px;
+      margin-bottom: 20px;
+      border-left: 2px solid #e0e0e0;
+    }
+
+    .timeline-icon {
+      position: absolute;
+      left: -12px;
+      top: 0;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background-color: white;
+      border: 2px solid #e0e0e0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1;
+    }
+
+    .timeline-icon img {
+      width: 14px;
+      height: 14px;
+      object-fit: contain;
+    }
+
+    .timeline-content {
+      margin-left: 10px;
+    }
+
+    .timeline-title {
+      font-weight: bold;
+    }
+
+    .timeline-type {
+      font-size: 12px;
+      margin-top: 4px;
+    }
+
+    .timeline-time {
+      font-size: 12px;
+      color: #666;
+    }
+
+    /* Opportunity details */
+    .opportunity-details {
+      margin-bottom: 16px;
+      background-color: white;
+      border-radius: 8px;
+      overflow: hidden;
+      padding: 16px;
+    }
+
+    .detail-row {
+      margin-bottom: 8px;
+    }
+
+    .details-link {
+      margin-top: 16px;
+    }
+
+    .details-link a {
+      color: #0078d4;
+      text-decoration: none;
+    }
+
+    /* Footer */
+    .footer {
+      padding: 12px 16px;
+      font-size: 13px;
+      border-top: 1px solid #e0e0e0;
+      background-color: white;
+    }
+
+    /* Opportunity list */
+    .opportunity-card {
+      padding: 16px;
+      margin-bottom: 12px;
+      background-color: white;
+      border-radius: 8px;
+      cursor: pointer;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    .opportunity-title {
+      font-weight: bold;
+      margin-bottom: 8px;
+    }
+
+    .opportunity-detail {
+      font-size: 14px;
+      margin-bottom: 4px;
+    }
+
+    .opportunity-date {
+      font-size: 14px;
+      color: #666;
+    }
+
+    /* Login container */
+    .login-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    }
+
+    /* Error message */
+    .error-message {
+      padding: 8px;
+      background-color: #ffebee;
+      color: #c62828;
+      border-radius: 4px;
+      margin: 8px;
+      position: relative;
+    }
+
+    .error-close {
+      position: absolute;
+      top: 2px;
+      right: 2px;
+      background: none;
+      border: none;
+      font-size: 16px;
+      cursor: pointer;
+      color: #c62828;
+    }
+
+    /* Debug panel */
+    .debug-panel {
+      position: fixed;
+      bottom: 0;
+      right: 0;
+      font-size: 10px;
+      color: #999;
+      padding: 2px;
+      background-color: rgba(255,255,255,0.8);
+    }
+  </style>
 </head>
 <body>
   <div id="root"></div>
-  <script type="module" src="./pages/popup/main.jsx"></script>
+  <script type="module" src="popup.js"></script>
 </body>
 </html>

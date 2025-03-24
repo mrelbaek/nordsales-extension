@@ -1,5 +1,6 @@
 NordSales Chrome Extension
 A Chrome extension for Dynamics 365 Sales that provides a seamless way to view opportunity details and activities directly from your browser.
+
 Overview
 The NordSales extension enhances your Dynamics CRM experience by providing a sleek sidebar that automatically detects when you're viewing an opportunity and displays relevant information without leaving your current page. It provides a convenient way to view opportunity details, activity history, and insights while navigating through Dynamics 365.
 Features

@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { login, getAccessToken, logout } from "@/utils/auth";
+import { PiEnvelope, PiCalendarDots, PiPhoneCall, PiCheckSquare, PiNotePencil } from "react-icons/pi";
+
 
 // URLs for different API calls
 const BASE_URL = "https://orga6a657bc.crm.dynamics.com/api/data/v9.0";
@@ -16,6 +18,18 @@ const Popup = () => {
     const [autoOpen, setAutoOpen] = useState(true);
     const [activities, setActivities] = useState([]);
 
+    // Helper function for icons
+    const getIconForActivity = (type) => {
+        switch (type.toLowerCase()) {
+          case 'email': return <PiEnvelope size={18} color="#555" />;
+          case 'meeting': return <PiCalendarDots size={18} color="#555" />;
+          case 'phonecall': return <PiPhoneCall size={18} color="#555" />;
+          case 'task': return <PiCheckSquare size={18} color="#555" />;
+          case 'note': return <PiNotePencil size={18} color="#555" />;
+          default: return null;
+        }
+      };
+      
     // Fetch activities related to an opportunity
     const fetchActivitiesForOpportunity = async (token, opportunityId) => {
         const activitiesUrl = `${BASE_URL}/activitypointers?$filter=_regardingobjectid_value eq '${opportunityId}'&$select=activityid,subject,activitytypecode,actualstart,actualend,createdon`;
@@ -658,28 +672,18 @@ const Popup = () => {
                                 )}
                                 
                                 {/* Activity Statistics */}
-                                <h4 style={{ marginTop: "24px", marginBottom: "12px" }}>📊 Activity Statistics</h4>
-                                <div style={{ 
-                                    display: "flex", 
-                                    flexWrap: "wrap", 
-                                    gap: "12px", 
-                                    marginBottom: "16px" 
-                                }}>
-                                    {Object.entries(getActivityStats(activities)).map(([type, count]) => (
-                                        count > 0 && (
-                                            <div 
-                                                key={type} 
-                                                style={{ 
-                                                    padding: "6px 12px", 
-                                                    backgroundColor: "#e3f2fd", 
-                                                    borderRadius: "16px",
-                                                    fontSize: "14px"
-                                                }}
-                                            >
-                                                {count} {type}{count !== 1 ? "s" : ""}
-                                            </div>
-                                        )
-                                    ))}
+                                <h4 style={{ marginTop: "24px", marginBottom: "12px" }}>Statistics</h4>
+                                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                                {Object.entries(getActivityStats(activities)).map(([type, count]) => (
+                                    count > 0 && (
+                                    <div key={type} style={{ display: "flex", alignItems: "center", gap: "10px", color: "#333" }}>
+                                        {getIconForActivity(type)}
+                                        <span style={{ fontSize: "14px" }}>
+                                        {count} {type}{count !== 1 ? "s" : ""}
+                                        </span>
+                                    </div>
+                                    )
+                                ))}
                                 </div>
 
                                 {/* Timeline */}

@@ -12,6 +12,7 @@
     "@azure/msal-browser": "^4.8.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-icons": "^5.5.0",
     "readable-stream": "^4.7.0",
     "web-streams-polyfill": "^3.0.3"
   },

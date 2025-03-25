@@ -486,7 +486,7 @@ const Popup = () => {
 
     return (
         <div style={{ 
-            padding: "16px", 
+            padding: "10px", 
             fontFamily: "Arial, sans-serif",
             height: "100%",
             boxSizing: "border-box",
@@ -558,39 +558,59 @@ const Popup = () => {
 
             {/* Show content when logged in */}
             {accessToken && (
-                <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "16px" }}>
-                        <button 
-                            onClick={handleLogout} 
-                            style={{ 
-                                padding: "8px 16px", 
-                                backgroundColor: "#d32f2f", 
-                                color: "white", 
-                                border: "none", 
-                                borderRadius: "4px",
-                                cursor: "pointer", 
-                                fontSize: "13px"
-                            }}
-                        >
-                            Logout
-                        </button>
-                        
-                        {currentOpportunity && (
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", width: "100%", overflow: "auto" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "12px", overflow: "auto" }}>
+                    <div style={{
+                        width: "100%",
+                        display: "flex",
+                        alignItems: "center",
+                        borderRadius: "4px",
+                        boxSizing:"border-box",
+                        justifyContent: "space-between",
+                        padding: "10px 12px",
+                        backgroundColor: "#f9f8f7",
+                        border: "1px solid #e0e0e0",
+                        fontFamily: "Segoe UI, sans-serif",
+                        }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                            <button style={{
+                            background: "none",
+                            border: "none",
+                            fontSize: "18px",
+                            cursor: "pointer"
+                            }}>
+                            ☰
+                            </button>
+                            <span style={{ fontSize: "16px", fontWeight: "500", letterSpacing: "-0.5px" }}>
+                            Nordsales
+                            </span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                            <button style={{
+                            background: "none",
+                            border: "none",
+                            fontSize: "18px",
+                            cursor: "pointer"
+                            }}>
+                            ⚙
+                            </button>
+                            {currentOpportunity && (
                             <button 
                                 onClick={handleBackToList} 
-                                style={{ 
-                                    padding: "8px 16px", 
-                                    backgroundColor: "#424242", 
-                                    color: "white", 
+                                style={{  
+                                    background: "none", 
                                     border: "none", 
-                                    borderRadius: "4px",
                                     cursor: "pointer", 
-                                    fontSize: "13px"
+                                    fontSize: "18px"
                                 }}
                             >
-                                Back to List
+                                x
                             </button>
                         )}
+                        </div>
+                        </div>
+                        
+
                     </div>
                     
                     <div style={{ flex: 1, overflow: "auto" }}>
@@ -759,6 +779,20 @@ const Popup = () => {
                             </div>
                         )}
                     </div>
+                    <button 
+                            onClick={handleLogout} 
+                            style={{ 
+                                padding: "8px 16px", 
+                                backgroundColor: "#d32f2f", 
+                                color: "white", 
+                                border: "none", 
+                                borderRadius: "4px",
+                                cursor: "pointer", 
+                                fontSize: "13px"
+                            }}
+                        >
+                            Logout
+                        </button>
 
                     {/* Auto-open toggle */}
                     <div style={{ 

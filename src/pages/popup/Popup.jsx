@@ -3,7 +3,7 @@ import { login, getAccessToken, logout } from "@/utils/auth";
 
 // URLs for different API calls
 const BASE_URL = "https://orga6a657bc.crm.dynamics.com/api/data/v9.0";
-const OPPORTUNITIES_URL = `${BASE_URL}/opportunities?$top=5`;
+const OPPORTUNITIES_URL = `${BASE_URL}/opportunities?$select=name,opportunityid,_customerid_value,createdon,statecode,estimatedclosedate,actualclosedate&$expand=customerid_account($select=name)&$top=5`;
 
 const Popup = () => {
     const [accessToken, setAccessToken] = useState(null);
@@ -14,6 +14,65 @@ const Popup = () => {
     const [error, setError] = useState(null);
     const [debugInfo, setDebugInfo] = useState(null);
     const [autoOpen, setAutoOpen] = useState(true);
+    const [activities, setActivities] = useState([]);
+
+    // Fetch activities related to an opportunity
+    const fetchActivitiesForOpportunity = async (token, opportunityId) => {
+        const activitiesUrl = `${BASE_URL}/activitypointers?$filter=_regardingobjectid_value eq '${opportunityId}'&$select=activityid,subject,activitytypecode,actualstart,actualend,createdon`;
+        
+        try {
+            const response = await fetch(activitiesUrl, {
+                headers: {
+                    "Authorization": `Bearer ${token}`,
+                    "Accept": "application/json",
+                    "OData-MaxVersion": "4.0",
+                    "OData-Version": "4.0"
+                }
+            });
+    
+            // Handle authentication error
+            if (response.status === 401) {
+                console.warn("Authentication token expired or invalid when fetching activities");
+                // Don't try to refresh token here, let the main opportunity fetch handle it
+                return [];
+            }
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Failed to fetch activities: ${response.status} - ${errorText}`);
+            }
+    
+            const data = await response.json();
+            return data.value || [];
+        } catch (error) {
+            console.error("Error fetching activities:", error);
+            return [];
+        }
+    };
+
+    // Calculate activity statistics
+    const getActivityStats = (activities) => {
+        const stats = {
+            Email: 0,
+            PhoneCall: 0,
+            Meeting: 0,
+            Task: 0,
+            Note: 0
+        };
+
+        activities.forEach((activity) => {
+            const type = activity.activitytypecode?.toLowerCase();
+            switch (type) {
+                case 'email': stats.Email++; break;
+                case 'phonecall': stats.PhoneCall++; break;
+                case 'appointment': stats.Meeting++; break;
+                case 'task': stats.Task++; break;
+                case 'note': stats.Note++; break;
+            }
+        });
+
+        return stats;
+    };
 
     // Fetch list of opportunities
     const fetchOpportunities = async (token) => {
@@ -34,6 +93,20 @@ const Popup = () => {
             });
 
             console.log(`Response status: ${response.status}`);
+            
+            if (response.status === 401) {
+                console.warn("Authentication token expired or invalid");
+                // Try to refresh the token
+                const newToken = await login();
+                if (newToken) {
+                    console.log("Token refreshed, retrying request");
+                    setAccessToken(newToken);
+                    // Return from this function - the useEffect will trigger a new fetch
+                    return;
+                } else {
+                    throw new Error("Authentication failed. Please log in again.");
+                }
+            }
             
             if (!response.ok) {
                 // Try to get more information about the error
@@ -87,6 +160,7 @@ const Popup = () => {
             
             let lastError = null;
             let successResponse = null;
+            let authFailed = false;
             
             // Try each format until one works
             for (const url of formats) {
@@ -105,6 +179,18 @@ const Popup = () => {
                     
                     console.log(`Response status for ${url}: ${response.status}`);
                     
+                    // Check for authentication error
+                    if (response.status === 401) {
+                        authFailed = true;
+                        lastError = {
+                            status: 401,
+                            url: url,
+                            text: "Authentication failed"
+                        };
+                        // Don't try other formats if auth failed
+                        break;
+                    }
+                    
                     if (response.ok) {
                         successResponse = response;
                         break;
@@ -121,6 +207,20 @@ const Popup = () => {
                         message: err.message,
                         url: url
                     };
+                }
+            }
+            
+            // Handle authentication failure
+            if (authFailed) {
+                console.warn("Authentication token expired or invalid");
+                // Try to refresh the token
+                const newToken = await login();
+                if (newToken) {
+                    console.log("Token refreshed, retrying request");
+                    setAccessToken(newToken);
+                    return; // Exit function, the useEffect will trigger a new fetch
+                } else {
+                    throw new Error("Authentication failed. Please log in again.");
                 }
             }
             
@@ -144,6 +244,11 @@ const Popup = () => {
             } else {
                 setCurrentOpportunity(data);
             }
+            
+            // Fetch activities for this opportunity
+            const activityData = await fetchActivitiesForOpportunity(token, oppId);
+            setActivities(activityData);
+            
         } catch (error) {
             console.error("Error fetching opportunity details:", error);
             setError(`Failed to fetch opportunity details: ${error.message}`);
@@ -195,12 +300,17 @@ const Popup = () => {
                 // Notify service worker that popup is open
                 chrome.runtime.sendMessage({ type: "POPUP_OPENED" });
                 
+                // Clear any existing errors
+                setError(null);
+                setDebugInfo(null);
+                
                 // Get the token
                 const token = await getAccessToken();
                 console.log("Got access token:", token ? "yes" : "no");
-                setAccessToken(token);
                 
                 if (token) {
+                    setAccessToken(token);
+                    
                     // Try to get current opportunity ID
                     const oppId = await getCurrentOpportunityId();
                     console.log("Current opportunity ID:", oppId);
@@ -212,6 +322,8 @@ const Popup = () => {
                     } else {
                         fetchOpportunities(token);
                     }
+                } else {
+                    console.log("No valid token found, user needs to log in");
                 }
 
                 // Get the auto-open preference
@@ -219,7 +331,13 @@ const Popup = () => {
                     setAutoOpen(result.autoOpen !== false);
                 });
             } catch (error) {
-                console.warn("No stored access token found:", error);
+                console.warn("Error during initialization:", error);
+                setError("Failed to initialize extension: " + error.message);
+                setDebugInfo({
+                    errorType: "Initialization Error",
+                    message: error.message,
+                    timestamp: new Date().toISOString()
+                });
             }
         }
         
@@ -287,7 +405,13 @@ const Popup = () => {
     const handleLogin = async () => {
         try {
             setError(null);
+            setDebugInfo(null);
             const token = await login();
+            
+            if (!token) {
+                throw new Error("Failed to obtain access token");
+            }
+            
             console.log("Login successful, got token");
             setAccessToken(token);
             
@@ -300,6 +424,11 @@ const Popup = () => {
         } catch (error) {
             console.error("Login failed:", error);
             setError(`Login failed: ${error.message}`);
+            setDebugInfo({
+                errorType: "Authentication Error",
+                message: error.message,
+                timestamp: new Date().toISOString()
+            });
         }
     };
 
@@ -308,6 +437,7 @@ const Popup = () => {
         setAccessToken(null);
         setOpportunities([]);
         setCurrentOpportunity(null);
+        setActivities([]);
         setError(null);
         setDebugInfo(null);
     };
@@ -482,6 +612,12 @@ const Popup = () => {
                                 <div style={{ marginBottom: "8px" }}>
                                     <strong>ID:</strong> {currentOpportunity.opportunityid}
                                 </div>
+
+                                {currentOpportunity.customerid_account && (
+                                    <div style={{ marginBottom: "8px" }}>
+                                        <strong>Customer:</strong> {currentOpportunity.customerid_account.name || "N/A"}
+                                    </div>
+                                )}
                                 
                                 {currentOpportunity.estimatedvalue && (
                                     <div style={{ marginBottom: "8px" }}>
@@ -498,6 +634,75 @@ const Popup = () => {
                                 {currentOpportunity.createdon && (
                                     <div style={{ marginBottom: "8px" }}>
                                         <strong>Created On:</strong> {new Date(currentOpportunity.createdon).toLocaleDateString()}
+                                    </div>
+                                )}
+                                
+                                {/* Activity Statistics */}
+                                <h4 style={{ marginTop: "24px", marginBottom: "12px" }}>📊 Activity Statistics</h4>
+                                <div style={{ 
+                                    display: "flex", 
+                                    flexWrap: "wrap", 
+                                    gap: "12px", 
+                                    marginBottom: "16px" 
+                                }}>
+                                    {Object.entries(getActivityStats(activities)).map(([type, count]) => (
+                                        count > 0 && (
+                                            <div 
+                                                key={type} 
+                                                style={{ 
+                                                    padding: "6px 12px", 
+                                                    backgroundColor: "#e3f2fd", 
+                                                    borderRadius: "16px",
+                                                    fontSize: "14px"
+                                                }}
+                                            >
+                                                {count} {type}{count !== 1 ? "s" : ""}
+                                            </div>
+                                        )
+                                    ))}
+                                </div>
+
+                                {/* Timeline */}
+                                {activities.length > 0 && (
+                                    <div>
+                                        <h4 style={{ marginTop: "24px", marginBottom: "12px" }}>🕓 Activity Timeline</h4>
+                                        <div style={{ 
+                                            borderLeft: "2px solid #ccc", 
+                                            marginLeft: "8px", 
+                                            paddingLeft: "16px" 
+                                        }}>
+                                            {activities
+                                                .sort((a, b) => new Date(b.createdon) - new Date(a.createdon))
+                                                .map((activity) => (
+                                                    <div 
+                                                        key={activity.activityid} 
+                                                        style={{ 
+                                                            marginBottom: "16px", 
+                                                            position: "relative" 
+                                                        }}
+                                                    >
+                                                        <div style={{
+                                                            position: "absolute",
+                                                            left: "-24px",
+                                                            top: "4px",
+                                                            backgroundColor: "#0078d4",
+                                                            width: "10px",
+                                                            height: "10px",
+                                                            borderRadius: "50%"
+                                                        }}></div>
+                                                        <div style={{ fontWeight: "bold" }}>
+                                                            {activity.subject || "No subject"}
+                                                        </div>
+                                                        <div style={{ 
+                                                            fontSize: "12px", 
+                                                            color: "#666", 
+                                                            marginTop: "4px" 
+                                                        }}>
+                                                            {activity.activitytypecode} • {new Date(activity.createdon).toLocaleString()}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                        </div>
                                     </div>
                                 )}
                                 
@@ -539,11 +744,14 @@ const Popup = () => {
                                                 onClick={() => fetchOpportunityDetails(accessToken, opp.opportunityid)}
                                             >
                                                 <div style={{ fontWeight: "bold" }}>{opp.name}</div>
-                                                {opp.estimatedvalue && (
-                                                    <div style={{ fontSize: "12px", marginTop: "4px" }}>
-                                                        Value: ${opp.estimatedvalue.toLocaleString()}
-                                                    </div>
-                                                )}
+                                                <div style={{ fontSize: "12px", marginTop: "4px" }}>
+                                                    {opp.customerid_account && (
+                                                        <span>{opp.customerid_account.name}</span>
+                                                    )}
+                                                    {opp.estimatedvalue && (
+                                                        <span> • ${opp.estimatedvalue.toLocaleString()}</span>
+                                                    )}
+                                                </div>
                                             </li>
                                         ))}
                                     </ul>
@@ -581,6 +789,7 @@ const Popup = () => {
                     <div>Token exists: {accessToken ? 'Yes' : 'No'}</div>
                     <div>Current opportunity ID: {currentOpportunityId || 'None'}</div>
                     <div>Opportunities loaded: {opportunities.length}</div>
+                    <div>Activities loaded: {activities.length}</div>
                     <div>Auto-open enabled: {autoOpen ? 'Yes' : 'No'}</div>
                 </details>
             </div>

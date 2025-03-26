@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { login, getAccessToken, logout } from "@/utils/auth";
 import { PiEnvelope, PiCalendarDots, PiPhoneCall, PiCheckSquare, PiNotePencil } from "react-icons/pi";
+import Calendar from 'react-calendar';
 
 
 // URLs for different API calls
@@ -17,6 +18,8 @@ const Popup = () => {
     const [debugInfo, setDebugInfo] = useState(null);
     const [autoOpen, setAutoOpen] = useState(true);
     const [activities, setActivities] = useState([]);
+    const [selectedDate, setSelectedDate] = useState(new Date());
+
 
     // Helper function for icons
     const getIconForActivity = (type) => {
@@ -74,6 +77,7 @@ const Popup = () => {
             Note: 0
         };
 
+
         activities.forEach((activity) => {
             const type = activity.activitytypecode?.toLowerCase();
             switch (type) {
@@ -87,6 +91,10 @@ const Popup = () => {
 
         return stats;
     };
+
+    const getActivityDates = () => {
+        return activities.map(a => new Date(a.createdon).toDateString());
+      };
 
     // Fetch list of opportunities
     const fetchOpportunities = async (token) => {
@@ -496,6 +504,17 @@ const Popup = () => {
             root.style.height = '100%';
             root.style.overflow = 'auto';
         }
+
+        const style = document.createElement('style');
+        style.innerHTML = `
+          .react-calendar__tile--active {
+            background-color: #0078d4 !important;
+            color: white !important;
+            border-radius: 6px !important;
+          }
+        `;
+        document.head.appendChild(style);
+
     }, []);
 
     return (
@@ -684,6 +703,63 @@ const Popup = () => {
                                     </div>
                                     )
                                 ))}
+                                </div>
+                                
+                                {/* Calendar */}
+                                <h4 style={{ marginTop: "24px", marginBottom: "12px" }}>Entries</h4>
+                                <div
+                                style={{
+                                    backgroundColor: "#fff",
+                                    padding: "16px",
+                                    borderRadius: "8px",
+                                    border: "1px solid #e0e0e0",
+                                    boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
+                                    marginBottom: "24px",
+                                    fontFamily: "Arial, sans-serif"
+                                }}
+                                >
+                                {(() => {
+                                    try {
+                                    return (
+                                        <Calendar
+                                        value={selectedDate}
+                                        onChange={setSelectedDate}
+                                        calendarType="iso8601"
+                                        tileContent={({ date, view }) => {
+                                            if (view === 'month') {
+                                            const hasActivity = activities.some(
+                                                (act) =>
+                                                new Date(act.createdon).toDateString() ===
+                                                date.toDateString()
+                                            );
+                                            return hasActivity ? (
+                                                <div
+                                                style={{
+                                                    marginTop: 2,
+                                                    width: 6,
+                                                    height: 6,
+                                                    borderRadius: '50%',
+                                                    backgroundColor: '#0078d4',
+                                                    marginInline: 'auto'
+                                                }}
+                                                ></div>
+                                            ) : null;
+                                            }
+                                            return null;
+                                        }}
+                                        tileClassName={({ date, view }) =>
+                                            view === 'month' &&
+                                            date.toDateString() === new Date().toDateString()
+                                            ? 'react-calendar__tile--active'
+                                            : null
+                                        }
+                                        />
+                                    );
+                                    } catch (e) {
+                                    console.error("Calendar crashed:", e);
+                                    return <p>Calendar failed to load.</p>;
+                                    }
+                                })()}
                                 </div>
 
                                 {/* Timeline */}

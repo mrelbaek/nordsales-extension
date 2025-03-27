@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { login, getAccessToken, logout } from "@/utils/auth";
 import { PiEnvelope, PiCalendarDots, PiPhoneCall, PiCheckSquare, PiNotePencil } from "react-icons/pi";
+import { Timeline, Events, Event } from 'vertical-timeline-component-react';
 
 // Base URL for API calls - replace with your actual org ID
 const BASE_URL = "https://orga6a657bc.crm.dynamics.com/api/data/v9.0";
@@ -128,6 +129,18 @@ const Popup = () => {
             activity: sortedActivities[0]
         };
     };
+
+    // Timeline Log color stuff
+    const timelineTheme = {
+        borderDotColor: '#ffffff',
+        descriptionColor: '#262626',
+        dotColor: '#c5c5c5',
+        eventColor: '#262626',
+        lineColor: '#d0cdc4',
+        subtitleColor: '#7c7c7c',
+        titleColor: '#405b73',
+        yearColor: '#405b73',
+      };
 
     // Generate calendar for current month
     const generateCalendar = (year, month, activities) => {
@@ -1058,44 +1071,169 @@ const Popup = () => {
                             {accordionState.timeline && (
                                 <div style={{ padding: "16px" }}>
                                     {currentOpportunity.activities && currentOpportunity.activities.length > 0 ? (
-                                        <div className="timeline">
-                                            {currentOpportunity.activities.map((activity, index) => (
-                                                <div key={activity.activityid} style={{ 
-                                                    position: "relative", 
-                                                    paddingLeft: "30px",
-                                                    marginBottom: "20px",
-                                                    borderLeft: "2px solid #e0e0e0"
-                                                }}>
-                                                    {/* Activity Icon */}
-                                                    <div style={{ 
-                                                        position: "absolute", 
-                                                        left: "-10px", 
-                                                        top: "0", 
-                                                        width: "20px", 
-                                                        height: "20px",
-                                                        borderRadius: "50%",
-                                                        backgroundColor: "white",
-                                                        border: "2px solid #e0e0e0",
-                                                        display: "flex",
-                                                        alignItems: "center",
-                                                        justifyContent: "center",
-                                                        zIndex: 1,
-                                                        fontSize: "12px"
-                                                        }}>
-                                                        {getActivityLabel(activity.activitytypecode).charAt(0)}
-                                                        </div>
+                                        <div className="enhanced-timeline">
+                                            {/* Group activities by date */}
+                                            {(() => {
+                                                const groupedActivities = {};
+                                                
+                                                // Group activities by date
+                                                currentOpportunity.activities.forEach(activity => {
+                                                    const date = new Date(activity.createdon);
+                                                    const dateKey = date.toLocaleDateString();
                                                     
-                                                    {/* Activity Content */}
-                                                    <div>
-                                                        <div style={{ fontWeight: "bold" }}>
-                                                            {activity.subject || getActivityLabel(activity.activitytypecode)}
+                                                    if (!groupedActivities[dateKey]) {
+                                                        groupedActivities[dateKey] = [];
+                                                    }
+                                                    
+                                                    groupedActivities[dateKey].push(activity);
+                                                });
+                                                
+                                                // Sort dates in descending order (newest first)
+                                                const sortedDates = Object.keys(groupedActivities).sort((a, b) => {
+                                                    return new Date(b) - new Date(a);
+                                                });
+                                                
+                                                return sortedDates.map((dateKey, dateIndex) => {
+                                                    const activities = groupedActivities[dateKey];
+                                                    
+                                                    return (
+                                                        <div key={dateKey} className="timeline-date-group">
+                                                            {/* Date header */}
+                                                            <div 
+                                                                style={{
+                                                                    padding: "8px 12px",
+                                                                    marginBottom: "12px",
+                                                                    backgroundColor: "#f5f5f5",
+                                                                    borderRadius: "4px",
+                                                                    fontWeight: "bold",
+                                                                    display: "inline-block"
+                                                                }}
+                                                            >
+                                                                {dateKey} ({activities.length} {activities.length === 1 ? 'activity' : 'activities'})
+                                                            </div>
+                                                            
+                                                            {/* Activities for this date */}
+                                                            <div style={{ position: "relative" }}>
+                                                                {/* Vertical line */}
+                                                                <div style={{
+                                                                    position: "absolute",
+                                                                    left: "7px",
+                                                                    top: "8px",
+                                                                    bottom: dateIndex === sortedDates.length - 1 ? "8px" : "0",
+                                                                    width: "2px",
+                                                                    backgroundColor: "#e0e0e0",
+                                                                    zIndex: 1
+                                                                }} />
+                                                                
+                                                                {activities.map((activity, index) => {
+                                                                    const activityLabel = getActivityLabel(activity.activitytypecode);
+                                                                    const activityColor = getActivityColor(activity.activitytypecode);
+                                                                    
+                                                                    return (
+                                                                        <div 
+                                                                            key={activity.activityid}
+                                                                            style={{
+                                                                                position: "relative",
+                                                                                marginBottom: "16px",
+                                                                                paddingLeft: "32px",
+                                                                                zIndex: 2
+                                                                            }}
+                                                                        >
+                                                                            {/* Activity dot */}
+                                                                            <div style={{
+                                                                                position: "absolute",
+                                                                                left: "0",
+                                                                                top: "8px",
+                                                                                width: "8px",
+                                                                                height: "8px",
+                                                                                borderRadius: "50%",
+                                                                                backgroundColor: activityColor,
+                                                                                border: "1px solid white",
+                                                                                boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
+                                                                                zIndex: 3
+                                                                            }} />
+                                                                            
+                                                                            {/* Activity content */}
+                                                                            <div style={{
+                                                                                backgroundColor: "#f9f9f9",
+                                                                                borderLeft: `4px solid ${activityColor}`,
+                                                                                borderRadius: "4px",
+                                                                                padding: "12px",
+                                                                                boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+                                                                                transition: "transform 0.2s ease, box-shadow 0.2s ease",
+                                                                                cursor: "pointer"
+                                                                            }}
+                                                                            onMouseEnter={(e) => {
+                                                                                e.currentTarget.style.transform = "translateY(-2px)";
+                                                                                e.currentTarget.style.boxShadow = "0 4px 6px rgba(0,0,0,0.1)";
+                                                                                e.currentTarget.style.borderLeft = "4px solid #d4ff58";
+                                                                            }}
+                                                                            onMouseLeave={(e) => {
+                                                                                e.currentTarget.style.transform = "translateY(0)";
+                                                                                e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.08)";
+                                                                                e.currentTarget.style.borderLeft = `4px solid ${activityColor}`;
+                                                                            }}
+                                                                            >
+                                                                                <div style={{ 
+                                                                                    display: "flex", 
+                                                                                    justifyContent: "space-between",
+                                                                                    alignItems: "flex-start"
+                                                                                }}>
+                                                                                    <div>
+                                                                                        <div style={{ 
+                                                                                            fontWeight: "400",
+                                                                                            marginBottom: "4px",
+                                                                                            fontSize: "12px"
+                                                                                        }}>
+                                                                                            {activity.subject || activityLabel}
+                                                                                        </div>
+                                                                                        
+                                                                                        <div style={{ 
+                                                                                            display: "flex",
+                                                                                            alignItems: "center",
+                                                                                            color: "#666",
+                                                                                            fontSize: "12px",
+                                                                                            marginBottom: "8px"
+                                                                                        }}>
+                                                                                            {getIconForActivity(activityLabel)}
+                                                                                            <span style={{ marginLeft: "6px" }}>
+                                                                                                {activityLabel}
+                                                                                            </span>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    
+                                                                                    <div style={{ 
+                                                                                        color: "#888", 
+                                                                                        fontSize: "10px",
+                                                                                        whiteSpace: "nowrap"
+                                                                                    }}>
+                                                                                        {new Date(activity.createdon).toLocaleTimeString([], { 
+                                                                                            hour: '2-digit', 
+                                                                                            minute: '2-digit' 
+                                                                                        })}
+                                                                                    </div>
+                                                                                </div>
+                                                                                
+                                                                                {activity.description && (
+                                                                                    <div style={{ 
+                                                                                        marginTop: "8px",
+                                                                                        fontSize: "14px",
+                                                                                        color: "#444",
+                                                                                        borderTop: "1px solid #eee",
+                                                                                        paddingTop: "8px"
+                                                                                    }}>
+                                                                                        {activity.description}
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
                                                         </div>
-                                                        <div style={{ fontSize: "12px", color: "#666" }}>
-                                                            {new Date(activity.createdon).toLocaleString()}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            ))}
+                                                    );
+                                                });
+                                            })()}
                                         </div>
                                     ) : (
                                         <p>No activities in the timeline.</p>

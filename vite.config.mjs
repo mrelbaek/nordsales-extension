@@ -39,6 +39,7 @@ export default defineConfig({
       input: {
         // Just build the main React component
         popup: path.resolve(__dirname, "src/pages/popup/main.jsx"),
+        contentScript: path.resolve(__dirname, "src/contentScript.js")
       },
       output: {
         entryFileNames: '[name].js',

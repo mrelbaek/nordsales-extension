@@ -4,6 +4,9 @@
     function reportOpportunityId() {
       const url = window.location.href;
       const idMatch = url.match(/[?&]id=([^&]*)/);
+
+      console.log("Content script starting on URL:", window.location.href);
+      console.log("Host:", window.location.host);
       
       // Only proceed if we find an ID
       if (idMatch && idMatch[1]) {
@@ -37,17 +40,22 @@
     
     // Simple message listener that doesn't maintain state
     chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
+      console.log("Message received in content script:", message);
+      
       if (message.type === "CHECK_OPPORTUNITY_ID") {
         // Re-check the URL when requested
         const url = window.location.href;
+        console.log("Current URL checked:", url);
         const idMatch = url.match(/[?&]id=([^&]*)/);
         
-        sendResponse({
+        const response = {
           opportunityId: idMatch && idMatch[1] ? idMatch[1] : null,
           url: url
-        });
+        };
+        console.log("Sending response:", response);
+        sendResponse(response);
       }
-      return true;
+      return true; // Keep the message channel open for async response
     });
     
     console.log("NordSales Extension content script loaded");

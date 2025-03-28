@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { login, getAccessToken, logout } from "@/utils/auth";
 import { PiEnvelope, PiCalendarDots, PiPhoneCall, PiCheckSquare, PiNotePencil } from "react-icons/pi";
-import { Timeline, Events, Event } from 'vertical-timeline-component-react';
+
 
 // Base URL for API calls - replace with your actual org ID
 const BASE_URL = "https://orga6a657bc.crm.dynamics.com/api/data/v9.0";
@@ -109,6 +109,205 @@ const Popup = () => {
         }
     };
     
+    // Calculate days between two dates
+    const calculateDaysBetween = (startDate, endDate) => {
+        const start = new Date(startDate);
+        const end = endDate ? new Date(endDate) : new Date();
+        const diffTime = Math.abs(end - start);
+        return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    };
+
+    // Get activity recency label
+    const getActivityRecencyLabel = (days) => {
+        if (days === null) return { text: "No activity", color: "#9e9e9e" };
+        if (days <= 3) return { text: "Recent", color: "#4caf50" };
+        if (days <= 7) return { text: "This week", color: "#2196f3" };
+        if (days <= 14) return { text: "Last 2 weeks", color: "#ff9800" };
+        return { text: `${days} days ago`, color: "#f44336" };
+    };
+
+    /**
+     * Creates a header element with consistent styling
+     * 
+     * @param {Object} options - Header options
+     * @param {string} options.title - The title to display in the header
+     * @param {boolean} options.showBackButton - Whether to show the back button
+     * @param {Function} options.onBackClick - Function to call when back button is clicked
+     * @param {Function} options.onMenuClick - Function to call when menu button is clicked
+     * @param {Function} options.onSettingsClick - Function to call when settings button is clicked
+     * @returns {JSX.Element} The header element
+     */
+    function createHeader(options = {}) {
+        const {
+        title = "Nordsales",
+        showBackButton = true,
+        onBackClick = () => {},
+        onMenuClick = () => {},
+        onSettingsClick = () => {}
+        } = options;
+        
+        return (
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px", overflow: "auto" }}>
+            <div style={{
+            width: "100%",
+            display: "flex",
+            alignItems: "center",
+            borderRadius: "4px",
+            boxSizing: "border-box",
+            justifyContent: "space-between",
+            padding: "10px 12px",
+            backgroundColor: "#f3f2f1",
+            border: "1px solid #e0e0e0",
+            fontFamily: "Segoe UI, sans-serif",
+            }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <button 
+                onClick={onMenuClick}
+                style={{
+                    background: "none",
+                    border: "none",
+                    fontSize: "18px",
+                    cursor: "pointer"
+                }}
+                >
+                ☰
+                </button>
+                <span style={{ fontSize: "16px", fontWeight: "500", letterSpacing: "-0.5px" }}>
+                {title}
+                </span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <button 
+                onClick={onSettingsClick}
+                style={{
+                    background: "none",
+                    border: "none",
+                    fontSize: "18px",
+                    cursor: "pointer"
+                }}
+                >
+                ⚙
+                </button>
+                {showBackButton && (
+                <button 
+                    onClick={onBackClick} 
+                    style={{  
+                    background: "none", 
+                    border: "none", 
+                    cursor: "pointer", 
+                    fontSize: "18px"
+                    }}
+                >
+                    x
+                </button>
+                )}
+            </div>
+            </div>
+        </div>
+        );
+    }
+  
+    const fetchOpportunitiesWithActivities = async (token, userId) => {
+        try {
+            setLoading(true);
+            setError(null);
+            
+            // Get current user ID if not provided
+            let currentUserId = userId;
+            if (!currentUserId) {
+                const userResponse = await fetch(`${BASE_URL}/WhoAmI`, {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        Accept: "application/json",
+                    },
+                });
+    
+                const userData = await userResponse.json();
+                currentUserId = userData.UserId;
+            }
+    
+            console.log("Fetching opportunities list...");
+            
+            // First get opportunities
+            const url = `${BASE_URL}/opportunities?$filter=statecode eq 0 and _ownerid_value eq ${currentUserId}&$select=name,opportunityid,_customerid_value,createdon,statecode,estimatedvalue,estimatedclosedate,actualclosedate&$expand=customerid_account($select=name)`;
+            
+            const response = await fetch(url, {
+                headers: { 
+                    "Authorization": `Bearer ${token}`,
+                    "Accept": "application/json",
+                    "OData-MaxVersion": "4.0",
+                    "OData-Version": "4.0",
+                    "Content-Type": "application/json"
+                },
+            });
+            
+            if (!response.ok) {
+                // Error handling code - keep what you have
+                throw new Error(`Failed to fetch data: ${response.status}`);
+            }
+    
+            const data = await response.json();
+            const opportunities = data.value || [];
+            console.log(`Received ${opportunities.length} opportunities`);
+            
+            // For each opportunity, fetch the most recent activity
+            const opportunitiesWithActivities = await Promise.all(
+                opportunities.map(async (opp) => {
+                    try {
+                        // Get activities for this opportunity
+                        const activitiesUrl = `${BASE_URL}/activitypointers?$filter=_regardingobjectid_value eq ${opp.opportunityid}&$select=activityid,createdon&$orderby=createdon desc&$top=1`;
+                        
+                        const activitiesResponse = await fetch(activitiesUrl, {
+                            headers: { 
+                                "Authorization": `Bearer ${token}`,
+                                "Accept": "application/json",
+                                "OData-MaxVersion": "4.0",
+                                "OData-Version": "4.0",
+                                "Content-Type": "application/json"
+                            },
+                        });
+                        
+                        if (activitiesResponse.ok) {
+                            const activitiesData = await activitiesResponse.json();
+                            const activities = activitiesData.value || [];
+                            
+                            // Add lastActivity property to opportunity
+                            return {
+                                ...opp,
+                                lastActivity: activities.length > 0 ? activities[0].createdon : null
+                            };
+                        } else {
+                            console.warn(`Could not fetch activities for opportunity ${opp.opportunityid}`);
+                            return {
+                                ...opp,
+                                lastActivity: null
+                            };
+                        }
+                    } catch (error) {
+                        console.error(`Error fetching activities for opportunity ${opp.opportunityid}:`, error);
+                        return {
+                            ...opp,
+                            lastActivity: null
+                        };
+                    }
+                })
+            );
+            
+            setOpportunities(opportunitiesWithActivities);
+        } catch (error) {
+            console.error("Error fetching opportunities:", error);
+            setError(`Failed to fetch opportunities list: ${error.message}`);
+            setDebugInfo({
+                errorType: "Opportunities List Error",
+                message: error.message,
+                timestamp: new Date().toISOString()
+            });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+
     // Helper function to calculate days since last contact
     const calculateDaysSinceLastContact = (activities) => {
         if (!activities || activities.length === 0) return null;
@@ -191,58 +390,6 @@ const Popup = () => {
         }
         
         return calendar;
-    };
-
-    // Fetch list of opportunities
-    const fetchOpportunities = async (token, oppId) => {
-        try {
-            setLoading(true);
-            setError(null);
-            
-            console.log("Fetching opportunities list...");
-            
-            const url = `${BASE_URL}/opportunities?$select=name,opportunityid,_customerid_value,createdon,statecode,estimatedvalue,estimatedclosedate,actualclosedate&$expand=customerid_account($select=name)&$top=5`;
-            
-            const response = await fetch(url, {
-                headers: { 
-                    "Authorization": `Bearer ${token}`,
-                    "Accept": "application/json",
-                    "OData-MaxVersion": "4.0",
-                    "OData-Version": "4.0",
-                    "Content-Type": "application/json"
-                },
-            });
-
-            console.log(`Response status: ${response.status}`);
-            
-            if (!response.ok) {
-                // Try to get more information about the error
-                let errorText = '';
-                try {
-                    const errorData = await response.json();
-                    errorText = JSON.stringify(errorData);
-                } catch (e) {
-                    errorText = await response.text();
-                }
-                
-                console.error(`API Error: ${response.status}`, errorText);
-                throw new Error(`Failed to fetch data: ${response.status} - ${errorText}`);
-            }
-
-            const data = await response.json();
-            console.log(`Received ${data.value?.length || 0} opportunities`);
-            setOpportunities(data.value || []);
-        } catch (error) {
-            console.error("Error fetching opportunities:", error);
-            setError(`Failed to fetch opportunities list: ${error.message}`);
-            setDebugInfo({
-                errorType: "Opportunities List Error",
-                message: error.message,
-                timestamp: new Date().toISOString()
-            });
-        } finally {
-            setLoading(false);
-        }
     };
 
     // Fetch details for a specific opportunity
@@ -342,16 +489,22 @@ const Popup = () => {
             
             // If not in storage, try to get it from the active tab
             const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+            console.log("Tabs found:", tabs.length, "First tab URL:", tabs[0]?.url);
             const activeTab = tabs[0];
-            
-            if (activeTab && activeTab.url && activeTab.url.includes('crm.dynamics.com')) {
+
+            if (tabs.length > 0 && tabs[0].url && tabs[0].url.includes('crm.dynamics.com')) {
                 try {
-                    console.log("Attempting to get opportunity ID from content script");
-                    const response = await chrome.tabs.sendMessage(
-                        activeTab.id, 
-                        { type: "CHECK_OPPORTUNITY_ID" }
+                    console.log("Sending message to tab ID:", tabs[0].id);
+                    
+                    // Set up a timeout promise to avoid hanging if communication fails
+                    const messagePromise = chrome.tabs.sendMessage(tabs[0].id, { type: "CHECK_OPPORTUNITY_ID" });
+                    const timeoutPromise = new Promise((_, reject) => 
+                        setTimeout(() => reject(new Error("Message timeout after 3 seconds")), 3000)
                     );
-                    console.log("Content script response:", response);
+                    
+                    // Race the message against the timeout
+                    const response = await Promise.race([messagePromise, timeoutPromise]);
+                    console.log("Response received:", response);
                     
                     if (response && response.opportunityId) {
                         // Store the ID so we don't have to ask again
@@ -364,8 +517,31 @@ const Popup = () => {
                     }
                 } catch (err) {
                     console.warn("Could not communicate with content script:", err);
+                    
+                    // Instead of just continuing with no ID, check if a URL parameter exists
+                    // As a fallback, try to parse the URL directly
+                    if (activeTab.url) {
+                        console.log("Attempting to extract ID from URL as fallback");
+                        const urlObj = new URL(activeTab.url);
+                        const idParam = urlObj.searchParams.get('id');
+                        
+                        if (idParam) {
+                            console.log("Found ID in URL parameters:", idParam);
+                            // Store the ID
+                            chrome.storage.local.set({ 
+                                currentOpportunityId: idParam,
+                                lastUpdated: Date.now(),
+                                source: "url_fallback"
+                            });
+                            return idParam;
+                        }
+                    }
                 }
             }
+
+            // Log when no opportunity ID was found
+            console.log("No opportunity ID could be found");
+            return null;
             
             return null;
         } catch (err) {
@@ -395,7 +571,7 @@ const Popup = () => {
                     if (oppId) {
                         fetchOpportunityDetails(token, oppId);
                     } else {
-                        fetchOpportunities(token);
+                        fetchOpportunitiesWithActivities(token);
                     }
                 }
 
@@ -427,7 +603,7 @@ const Popup = () => {
                     console.log("Opportunity ID cleared in storage");
                     setCurrentOpportunityId(null);
                     if (accessToken) {
-                        fetchOpportunities(accessToken);
+                        fetchOpportunitiesWithActivities(accessToken);
                     }
                 }
             });
@@ -448,7 +624,7 @@ const Popup = () => {
                 setCurrentOpportunityId(null);
                 setCurrentOpportunity(null);
                 if (accessToken) {
-                    fetchOpportunities(accessToken);
+                    fetchOpportunitiesWithActivities(accessToken);
                 }
             }
         };
@@ -480,7 +656,7 @@ const Popup = () => {
             if (currentOpportunityId) {
                 fetchOpportunityDetails(token, currentOpportunityId);
             } else {
-                fetchOpportunities(token);
+                fetchOpportunitiesWithActivities(token);
             }
         } catch (error) {
             console.error("Login failed:", error);
@@ -499,7 +675,7 @@ const Popup = () => {
 
     const handleBackToList = () => {
         setCurrentOpportunity(null);
-        fetchOpportunities(accessToken);
+        fetchOpportunitiesWithActivities(accessToken);
     };
 
     const clearError = () => {
@@ -641,57 +817,11 @@ const Popup = () => {
             {/* Show content when logged in */}
             {accessToken && currentOpportunity && (
                 <div style={{ flex: 1, display: "flex", flexDirection: "column", width: "100%", overflow: "auto" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px", overflow: "auto" }}>
-                    <div style={{
-                        width: "100%",
-                        display: "flex",
-                        alignItems: "center",
-                        borderRadius: "4px",
-                        boxSizing:"border-box",
-                        justifyContent: "space-between",
-                        padding: "10px 12px",
-                        backgroundColor: "#f3f2f1",
-                        border: "1px solid #e0e0e0",
-                        fontFamily: "Segoe UI, sans-serif",
-                        }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                            <button style={{
-                            background: "none",
-                            border: "none",
-                            fontSize: "18px",
-                            cursor: "pointer"
-                            }}>
-                            ☰
-                            </button>
-                            <span style={{ fontSize: "16px", fontWeight: "500", letterSpacing: "-0.5px" }}>
-                            Nordsales
-                            </span>
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                            <button style={{
-                            background: "none",
-                            border: "none",
-                            fontSize: "18px",
-                            cursor: "pointer"
-                            }}>
-                            ⚙
-                            </button>
-                            {currentOpportunity && (
-                            <button 
-                                onClick={handleBackToList} 
-                                style={{  
-                                    background: "none", 
-                                    border: "none", 
-                                    cursor: "pointer", 
-                                    fontSize: "18px"
-                                }}
-                            >
-                                x
-                            </button>
-                        )}
-                        </div>
-                        </div>
-                    </div>
+                    {createHeader({
+                    title: "Nordsales",
+                    showBackButton: true,
+                    onBackClick: handleBackToList
+                    })}
 
                     {/* Opportunity Name */}
                     <div>
@@ -1323,6 +1453,11 @@ const Popup = () => {
             {accessToken && !currentOpportunity && (
                 <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
                     {/* Header */}
+                    {createHeader({
+                        title: "Nordsales",
+                        showBackButton: true,
+                        onBackClick: handleBackToList
+                        })}
                     <div style={{ 
                         padding: "16px", 
                         borderBottom: "1px solid #e0e0e0",
@@ -1357,37 +1492,143 @@ const Popup = () => {
                             <p>No opportunities found.</p>
                         ) : (
                             <div>
-                                {opportunities.map((opp) => (
-                                    <div 
-                                        key={opp.opportunityid}
-                                        style={{ 
-                                            padding: "16px", 
-                                            marginBottom: "12px", 
-                                            backgroundColor: "white",
-                                            borderRadius: "8px",
-                                            cursor: "pointer",
-                                            boxShadow: "0 1px 3px rgba(0,0,0,0.1)"
-                                        }}
-                                        onClick={() => fetchOpportunityDetails(accessToken, opp.opportunityid)}
-                                    >
-                                        <div style={{ fontWeight: "bold", marginBottom: "8px" }}>{opp.name}</div>
-                                        {opp.customerid_account && (
-                                            <div style={{ fontSize: "14px", marginBottom: "4px" }}>
-                                                <strong>Customer:</strong> {opp.customerid_account.name}
+                                {opportunities.map((opp) => {
+                                    // Calculate days open
+                                    const daysOpen = calculateDaysBetween(opp.createdon, null);
+                                    
+                                    // Calculate days until close
+                                    const daysUntilClose = opp.estimatedclosedate ? 
+                                        calculateDaysBetween(new Date(), opp.estimatedclosedate) : null;
+                                    
+                                    // Calculate days since last activity
+                                    const lastActivityDays = opp.lastActivity ? 
+                                        calculateDaysBetween(opp.lastActivity, new Date()) : null;
+                                    const activityLabel = getActivityRecencyLabel(lastActivityDays);
+                                    
+                                    return (
+                                        <div 
+                                            key={opp.opportunityid}
+                                            style={{ 
+                                                padding: "14px 16px 14px 16px", 
+                                                marginBottom: "12px", 
+                                                backgroundColor: "white",
+                                                borderRadius: "8px",
+                                                cursor: "pointer",
+                                                boxShadow: "0 1px 3px rgba(0,0,0,0.1)"
+                                            }}
+                                            onClick={() => fetchOpportunityDetails(accessToken, opp.opportunityid)}
+                                        >
+                                            {/* Opportunity Name */}
+                                            <div style={{ 
+                                                // fontWeight: "bold", //
+                                                marginBottom: "8px", 
+                                                fontSize: "12px",
+                                                color: "#1f2223",
+                                                fontWeight: "600"
+                                            }}>
+                                                {opp.name}
                                             </div>
-                                        )}
-                                        {opp.estimatedvalue && (
-                                            <div style={{ fontSize: "14px", marginBottom: "4px" }}>
-                                                <strong>Value:</strong> ${opp.estimatedvalue.toLocaleString()}
+                                            
+                                            {/* Customer and Value Row */}
+                                            <div style={{ 
+                                                display: "flex", 
+                                                justifyContent: "space-between", 
+                                                marginBottom: "12px",
+                                                fontSize: "12px",
+                                                fontWeight: "500",
+                                                color: "#5f646a"
+                                            }}>
+                                                <div>
+                                                    {opp.customerid_account && (
+                                                        <span>{opp.customerid_account.name}</span>
+                                                    )}
+                                                </div>
+                                                <div style={{ fontWeight: "500" }}>
+                                                    {opp.estimatedvalue ? 
+                                                        `$${opp.estimatedvalue.toLocaleString()}` : "No est. value"}
+                                                </div>
                                             </div>
-                                        )}
-                                        {opp.createdon && (
-                                            <div style={{ fontSize: "14px", color: "#666" }}>
-                                                Created: {new Date(opp.createdon).toLocaleDateString()}
+                                            
+                                            {/* Timeline Indicators */}
+                                            <div style={{ display: "flex", alignItems: "center", marginBottom: "12px", gap: "12px" }}>
+                                                {/* Days Open Indicator */}
+                                                <div style={{ 
+                                                    flex: 1,
+                                                    backgroundColor: "#f5f5f5", 
+                                                    borderRadius: "4px",
+                                                    padding: "8px 12px",
+                                                }}>
+                                                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+                                                        <div style={{ fontSize: "12px", color: "#555" }}>Open days</div>
+                                                        <div style={{ fontSize: "14px", fontWeight: "bold" }}>{daysOpen}</div>
+                                                    </div>
+                                                    
+                                                    {/* Progress bar - shows fill based on days open (capped at 90 days) */}
+                                                    <div style={{ 
+                                                        height: "4px", 
+                                                        backgroundColor: "#e0e0e0", 
+                                                        borderRadius: "2px", 
+                                                        overflow: "hidden" 
+                                                    }}>
+                                                        <div style={{ 
+                                                            height: "100%", 
+                                                            width: `${Math.min(daysOpen / 90 * 100, 100)}%`, 
+                                                            backgroundColor: daysOpen > 60 ? "#f44336" : daysOpen > 30 ? "#ff9800" : "#2196f3",
+                                                            borderRadius: "2px"
+                                                        }}></div>
+                                                    </div>
+                                                </div>
+                                                
+                                                {/* Days Until Close Indicator */}
+                                                <div style={{ 
+                                                    flex: 1,
+                                                    backgroundColor: "#f5f5f5", 
+                                                    borderRadius: "4px",
+                                                    padding: "8px 12px",
+                                                }}>
+                                                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+                                                        <div style={{ fontSize: "12px", color: "#555" }}>Days to close</div>
+                                                        <div style={{ fontSize: "14px", fontWeight: "bold" }}>
+                                                            {daysUntilClose !== null ? daysUntilClose : "—"}
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    {/* Progress bar - inverse fill for days remaining (less days = more filled) */}
+                                                    {daysUntilClose !== null && (
+                                                        <div style={{ 
+                                                            height: "4px", 
+                                                            backgroundColor: "#e0e0e0", 
+                                                            borderRadius: "2px", 
+                                                            overflow: "hidden" 
+                                                        }}>
+                                                            <div style={{ 
+                                                                height: "100%", 
+                                                                width: `${Math.max(100 - (daysUntilClose / 30 * 100), 0)}%`, 
+                                                                backgroundColor: daysUntilClose < 7 ? "#f44336" : daysUntilClose < 15 ? "#ff9800" : "#4caf50",
+                                                                borderRadius: "2px"
+                                                            }}></div>
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
-                                        )}
-                                    </div>
-                                ))}
+                                            
+                                            {/* Activity Recency Label */}
+                                            <div style={{ display: "flex", justifyContent: "flex-start" }}>
+                                                <div style={{ 
+                                                    display: "inline-block",
+                                                    backgroundColor: `${activityLabel.color}20`, // Using 20% opacity of the color
+                                                    color: activityLabel.color,
+                                                    padding: "4px 8px",
+                                                    borderRadius: "5px",
+                                                    fontSize: "12px",
+                                                    fontWeight: "500"
+                                                }}>
+                                                    {activityLabel.text}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )
+                                })}
                             </div>
                         )}
                     </div>

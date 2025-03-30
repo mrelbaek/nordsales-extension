@@ -3,12 +3,13 @@
   "name": "NordSales Extension",
   "version": "1.0.0",
   "description": "Chrome extension for Dynamics Sales",
-  "action": {
-    "default_title": "NordSales"
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
   },
-  "options_page": "options.html",
   "background": {
-    "service_worker": "service-worker-loader.js",
+    "service_worker": "service-worker.js",
     "type": "module"
   },
   "permissions": [
@@ -21,13 +22,5 @@
   ],
   "host_permissions": [
     "https://*.crm.dynamics.com/*"
-  ],
-  "side_panel": {
-    "default_path": "popup.html"
-  },
-  "icons": {
-    "16": "icon16.png",
-    "48": "icon48.png",
-    "128": "icon128.png"
-  }
+  ]
 }

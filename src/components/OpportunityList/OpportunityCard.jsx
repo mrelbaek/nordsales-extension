@@ -127,10 +127,21 @@ const OpportunityCard = ({ opportunity, onClick }) => {
       style={{ 
         padding: "14px 16px 14px 16px", 
         marginBottom: "12px", 
+        borderLeft: `4px solid #9e9e9e`,
         backgroundColor: "white",
         borderRadius: "8px",
         cursor: "pointer",
         boxShadow: "0 1px 3px rgba(0,0,0,0.1)"
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.transform = "translateY(-2px)";
+        e.currentTarget.style.boxShadow = "0 4px 6px rgba(0,0,0,0.1)";
+        e.currentTarget.style.borderLeft = "4px solid #d4ff58";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.transform = "translateY(0)";
+        e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.08)";
+        e.currentTarget.style.borderLeft = `4px solid #9e9e9e`;
       }}
       onClick={onClick}
     >

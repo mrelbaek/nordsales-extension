@@ -25,45 +25,21 @@ const OpportunityList = ({
   onFetchMyOpenOpportunities
 }) => {
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", width: "100%", overflow: "auto" }}>
       {/* Header */}
-      <Header title="Nordsales" showBackButton={false} />
-      
-      <div style={{ 
-        padding: "16px", 
-        borderBottom: "1px solid #e0e0e0",
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        backgroundColor: "white"
-      }}>
-        <button 
-          onClick={onFetchMyOpenOpportunities}
-          style={{ 
-            padding: "8px 16px", 
-            backgroundColor: "#0078d4", 
-            color: "white", 
-            border: "none", 
-            borderRadius: "4px",
-            cursor: "pointer", 
-            fontSize: "13px"
-          }}
-        >
-          My Open Opportunities
-        </button>
-        <button 
-          onClick={onLogout} 
-          style={{ 
-            padding: "6px 12px", 
-            backgroundColor: "#f0f0f0", 
-            border: "1px solid #ccc",
-            borderRadius: "4px",
-            cursor: "pointer", 
-            fontSize: "13px"
-          }}
-        >
-          Logout
-        </button>
+      <Header
+        title="Nordsales"
+        showBackButton={false} 
+      />
+      {/* Content header */}
+      <div>
+        <h3 style={{
+          padding: "12px 16px 0px 16px",
+          display: "flex",
+          color: "#1f2223",
+          fontSize: "14px",
+          marginBottom: "2px"
+        }}>My Open Opportunities</h3>
       </div>
 
       {/* Opportunity List */}

@@ -125,7 +125,8 @@ const Calendar = ({ activities = [], isOpen, onToggle }) => {
                     width: "6px", 
                     height: "6px", 
                     borderRadius: "50%", 
-                    backgroundColor: "#1f2223" 
+                    border: "1px solid #1f2223",
+                    backgroundColor: "#e0ff82"
                   }}></span>
                 )}
               </div>

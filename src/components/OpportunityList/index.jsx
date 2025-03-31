@@ -12,6 +12,7 @@ import OpportunityCard from './OpportunityCard';
  * @param {Function} props.onOpportunitySelect - Function to call when an opportunity is selected
  * @param {Function} props.toggleAutoOpen - Function to call when auto-open toggle is clicked
  * @param {boolean} props.autoOpen - Whether auto-open is enabled
+ * @param {Function} props.onFetchMyOpenOpportunities - Function to fetch user's open opportunities
  * @returns {JSX.Element} Opportunity list component
  */
 const OpportunityList = ({ 
@@ -20,7 +21,8 @@ const OpportunityList = ({
   onLogout, 
   onOpportunitySelect,
   toggleAutoOpen,
-  autoOpen
+  autoOpen,
+  onFetchMyOpenOpportunities
 }) => {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -35,7 +37,20 @@ const OpportunityList = ({
         alignItems: "center",
         backgroundColor: "white"
       }}>
-        <h2 style={{ margin: "0", fontSize: "18px" }}>Recent Opportunities</h2>
+        <button 
+          onClick={onFetchMyOpenOpportunities}
+          style={{ 
+            padding: "8px 16px", 
+            backgroundColor: "#0078d4", 
+            color: "white", 
+            border: "none", 
+            borderRadius: "4px",
+            cursor: "pointer", 
+            fontSize: "13px"
+          }}
+        >
+          My Open Opportunities
+        </button>
         <button 
           onClick={onLogout} 
           style={{ 

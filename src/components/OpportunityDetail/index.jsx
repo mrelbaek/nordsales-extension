@@ -18,6 +18,7 @@ import BasicInfo from './BasicInfo';
  */
 const OpportunityDetail = ({ 
   opportunity, 
+  activities,
   onBackClick,
   toggleAutoOpen,
   autoOpen
@@ -100,28 +101,28 @@ const OpportunityDetail = ({
 
         {/* Statistics Section */}
         <Statistics 
-          activities={opportunity.activities} 
+          activities={activities} 
           isOpen={accordionState.statistics}
           onToggle={() => toggleAccordion('statistics')}
         />
 
         {/* Calendar Section */}
         <Calendar 
-          activities={opportunity.activities} 
+          activities={activities} 
           isOpen={accordionState.entries}
           onToggle={() => toggleAccordion('entries')}
         />
 
         {/* Analytics Section */}
         <Analytics 
-          activities={opportunity.activities} 
+          activities={activities} 
           isOpen={accordionState.analytics}
           onToggle={() => toggleAccordion('analytics')}
         />
 
         {/* Timeline Log Section */}
         <TimelineLog 
-          activities={opportunity.activities} 
+          activities={activities} 
           isOpen={accordionState.timeline}
           onToggle={() => toggleAccordion('timeline')}
         />

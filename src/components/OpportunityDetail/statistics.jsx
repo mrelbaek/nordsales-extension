@@ -13,6 +13,7 @@ import AccordionSection from '../common/AccordionSection';
  */
 const Statistics = ({ activities = [], isOpen, onToggle }) => {
   const activitySummary = summarizeActivities(activities);
+  console.log('OpportunityDetail received activities:', activities);
 
   return (
     <AccordionSection

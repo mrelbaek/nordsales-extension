@@ -1,10 +1,15 @@
 import React, { useEffect, useState } from "react";
-import { login, getAccessToken, logout } from "./utils/auth.js";
-import { getCurrentOpportunityId, fetchOpportunityDetails, fetchOpportunitiesWithActivities } from "./utils/api.js";
-import ErrorMessage from "./components/common/ErrorMessage.jsx";
-import Login from "./components/Login.jsx";
-import OpportunityList from "./components/OpportunityList";
-import OpportunityDetail from "./components/OpportunityDetail";
+import { login, getAccessToken, logout } from "../../utils/auth.js";
+import {
+  getCurrentOpportunityId,
+  fetchOpportunityDetails,
+  fetchOpportunitiesWithActivities,
+  fetchMyOpenOpportunities
+} from "../../utils/opportunityUtils.js";
+import ErrorMessage from "../../components/common/ErrorMessage.jsx";
+import Login from "../../components/Login.jsx";
+import OpportunityList from "../../components/OpportunityList";
+import OpportunityDetail from "../../components/OpportunityDetail";
 
 /**
  * Main popup component that manages the application state
@@ -17,6 +22,8 @@ const Popup = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [autoOpen, setAutoOpen] = useState(true);
+  const [activities, setActivities] = useState([]);
+  const [debugInfo, setDebugInfo] = useState(null);
 
   // Initialize the app
   useEffect(() => {
@@ -24,6 +31,10 @@ const Popup = () => {
       try {
         // Notify service worker that popup is open
         chrome.runtime.sendMessage({ type: "POPUP_OPENED" });
+        
+        // Clear any existing errors
+        setError(null);
+        setDebugInfo(null);
         
         // Get the token
         const token = await getAccessToken();
@@ -42,6 +53,8 @@ const Popup = () => {
           } else {
             await handleFetchOpportunities(token);
           }
+        } else {
+          console.log("No valid token found, user needs to log in.");
         }
 
         // Get the auto-open preference
@@ -50,7 +63,12 @@ const Popup = () => {
         });
       } catch (error) {
         console.warn("Initialization error:", error);
-        setError(error.message);
+        setError("Failed to initialize extension: " + error.message);
+        setDebugInfo({
+          errorType: "Initialization Error",
+          message: error.message,
+          timestamp: new Date().toISOString(),
+        });
       }
     }
     
@@ -111,6 +129,7 @@ const Popup = () => {
   // Watch for changes to the current opportunity ID
   useEffect(() => {
     if (accessToken && currentOpportunityId) {
+      console.log("Effect triggered: fetching opportunity details");
       handleFetchOpportunityDetails(accessToken, currentOpportunityId);
     }
   }, [currentOpportunityId, accessToken]);
@@ -146,13 +165,18 @@ const Popup = () => {
       setLoading(true);
       setError(null);
       
-      const opportunity = await fetchOpportunityDetails(token, oppId);
-      setCurrentOpportunity(opportunity);
+      // Call the utility function ONLY ONCE with all required state setters
+      await fetchOpportunityDetails(
+        token, 
+        oppId, 
+        setLoading, 
+        setError, 
+        setCurrentOpportunity, 
+        setActivities
+      );
     } catch (error) {
       console.error("Error fetching opportunity details:", error);
       setError(`Failed to fetch opportunity details: ${error.message}`);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -161,16 +185,35 @@ const Popup = () => {
    */
   const handleFetchOpportunities = async (token, userId = null) => {
     try {
-      setLoading(true);
-      setError(null);
-      
-      const opportunities = await fetchOpportunitiesWithActivities(token, userId);
-      setOpportunities(opportunities);
+      // Call the utility function with all required state setters
+      await fetchOpportunitiesWithActivities(
+        token, 
+        setLoading, 
+        setError, 
+        setOpportunities, 
+        setDebugInfo
+      );
     } catch (error) {
       console.error("Error fetching opportunities:", error);
       setError(`Failed to fetch opportunities list: ${error.message}`);
-    } finally {
-      setLoading(false);
+    }
+  };
+
+  /**
+   * Fetch all open opportunities for current user
+   */
+  const handleFetchMyOpenOpportunities = async () => {
+    try {
+      // Call the utility function
+      await fetchMyOpenOpportunities(
+        accessToken,
+        setLoading,
+        setError,
+        setOpportunities
+      );
+    } catch (error) {
+      console.error("Error fetching my opportunities:", error);
+      setError(`Failed to fetch opportunities list: ${error.message}`);
     }
   };
 
@@ -204,7 +247,9 @@ const Popup = () => {
     setAccessToken(null);
     setOpportunities([]);
     setCurrentOpportunity(null);
+    setActivities([]);
     setError(null);
+    setDebugInfo(null);
   };
 
   /**
@@ -241,21 +286,30 @@ const Popup = () => {
    * Render appropriate content based on app state
    */
   const renderContent = () => {
+    console.log("renderContent called, activities state:", activities);
+    
     if (!accessToken) {
       return <Login onLogin={handleLogin} />;
     }
-
+  
     if (currentOpportunity) {
+      console.log("Rendering OpportunityDetail with:", {
+        opportunity: currentOpportunity,
+        activities: activities, 
+        activitiesLength: activities?.length
+      });
+      
       return (
         <OpportunityDetail 
           opportunity={currentOpportunity}
+          activities={activities}
           onBackClick={handleBackToList}
           toggleAutoOpen={toggleAutoOpen}
           autoOpen={autoOpen}
         />
       );
     }
-
+  
     return (
       <OpportunityList 
         opportunities={opportunities}
@@ -264,6 +318,7 @@ const Popup = () => {
         onOpportunitySelect={handleOpportunitySelect}
         toggleAutoOpen={toggleAutoOpen}
         autoOpen={autoOpen}
+        onFetchMyOpenOpportunities={handleFetchMyOpenOpportunities}
       />
     );
   };

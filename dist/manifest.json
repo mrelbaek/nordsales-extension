@@ -8,7 +8,7 @@
   },
   "options_page": "options.html",
   "background": {
-    "service_worker": "service-worker-loader.js",
+    "service_worker": "service-worker.js",
     "type": "module"
   },
   "permissions": [
@@ -21,6 +21,17 @@
   ],
   "host_permissions": [
     "https://*.crm.dynamics.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.crm.dynamics.com/*"
+      ],
+      "js": [
+        "contentScript.js"
+      ],
+      "run_at": "document_idle"
+    }
   ],
   "side_panel": {
     "default_path": "popup.html"

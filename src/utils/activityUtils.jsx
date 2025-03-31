@@ -1,3 +1,4 @@
+import React from 'react';
 import { ACTIVITY_COLORS } from '../constants';
 import { 
   PiEnvelope, 
@@ -83,7 +84,6 @@ export const summarizeActivities = (activities) => {
   
   activities.forEach(activity => {
     if (!activity) return;
-    
     // Get the user-friendly label right away
     const label = getActivityLabel(activity.activitytypecode);
     

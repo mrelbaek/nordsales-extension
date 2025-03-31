@@ -54,20 +54,12 @@ export const fetchOpportunityDetails = async (token, oppId) => {
     headers: getDefaultHeaders(token),
   });
   
-  // Process the activities data if the request was successful
-  let activities = [];
-  if (activitiesResponse.ok) {
-    const activitiesData = await activitiesResponse.json();
-    activities = activitiesData.value || [];
-  } else {
-    console.warn(`Could not fetch activities: ${activitiesResponse.status}`);
-  }
-  
   // Combine the opportunity and activities data
   return {
     ...opportunity,
     activities: activities
   };
+  
 };
 
 /**

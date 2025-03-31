@@ -143,6 +143,12 @@ const TimelineLog = ({ activities = [], isOpen, onToggle }) => {
                                   fontSize: "12px"
                                 }}>
                                   {activity.subject || activityLabel}
+                                  <p style={{ fontSize: '0.75rem', color: '#999' }}>
+                                    Scheduled: {activity.scheduledstart}<br />
+                                    Actual: {activity.actualstart}<br />
+                                    Created: {activity.createdon}
+                                  </p>
+
                                 </div>
                                 
                                 <div style={{ 

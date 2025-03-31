@@ -130,10 +130,11 @@ export const getActivityDate = (activity) => {
   const created = parseDate(activity.createdon);
   const scheduled = parseDate(activity.scheduledstart);
   const scheduledEnd = parseDate(activity.scheduledend);
+  const actualstart = parseDate(activity.actualstart);
   
   // For appointments, prefer scheduledstart
   if (activity.activitytypecode?.toLowerCase() === 'appointment') {
-    return scheduled || created;
+    return actualstart || scheduled || created;
   }
   
   // Default to createdon for other activity types

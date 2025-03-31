@@ -4,7 +4,6 @@
 
 // Constants for API URLs
 const BASE_URL = "https://orga6a657bc.crm.dynamics.com/api/data/v9.2";
-const OPPORTUNITIES_URL = `${BASE_URL}/opportunities?$select=name,opportunityid,_customerid_value,createdon,statecode,estimatedclosedate,actualclosedate&$expand=customerid_account($select=name)&$top=5`;
 
 /**
  * Fetch current user information
@@ -41,7 +40,7 @@ export const getCurrentUserId = async (token) => {
  */
 export const getCurrentOpportunityId = async () => {
   try {
-    // First check if it's in storage
+    // First check storage
     const storedData = await chrome.storage.local.get(['currentOpportunityId']);
     
     if (storedData.currentOpportunityId) {
@@ -49,23 +48,33 @@ export const getCurrentOpportunityId = async () => {
       return storedData.currentOpportunityId;
     }
     
-    // If not in storage, try to get it from the active tab
+    // If not in storage, try to get from active tab
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
     const activeTab = tabs[0];
     
     if (activeTab?.url && activeTab.url.includes('crm.dynamics.com')) {
-      try {
-        console.log("Attempting to get opportunity ID from content script");
-        const response = await chrome.tabs.sendMessage(
-          activeTab.id, 
-          { type: "GET_OPPORTUNITY_ID" }
-        );
-        console.log("Content script response:", response);
-        return response?.opportunityId || null;
-      } catch (err) {
-        console.warn("Could not communicate with content script:", err);
-        return null;
-      }
+      return new Promise((resolve, reject) => {
+        try {
+          chrome.tabs.sendMessage(
+            activeTab.id, 
+            { type: "CHECK_OPPORTUNITY_ID" },
+            (response) => {
+              // Use runtime.lastError to check for errors
+              if (chrome.runtime.lastError) {
+                console.warn("Error sending message:", chrome.runtime.lastError);
+                resolve(null);
+                return;
+              }
+
+              console.log("Content script response:", response);
+              resolve(response?.opportunityId || null);
+            }
+          );
+        } catch (err) {
+          console.error("Message sending error:", err);
+          resolve(null);
+        }
+      });
     }
     
     return null;
@@ -83,8 +92,9 @@ export const getCurrentOpportunityId = async () => {
  */
 export const fetchActivitiesForOpportunity = async (token, opportunityId) => {
   console.log(`Attempting to fetch activities for opportunity: ${opportunityId}`);
-  const activitiesUrl = `${BASE_URL}/activitypointers?$filter=_regardingobjectid_value eq '${opportunityId}'&$select=activityid,subject,activitytypecode,actualstart,actualend,createdon`;
-  
+  const activitiesUrl = `${BASE_URL}/activitypointers?$filter=_regardingobjectid_value eq '${opportunityId}'&$select=activityid,subject,activitytypecode,actualstart,actualend,createdon,scheduledstart`;
+  console.log("📡 FETCHING ACTIVITIES FROM:", activitiesUrl);
+
   try {
     const response = await fetch(activitiesUrl, {
       headers: {
@@ -227,6 +237,8 @@ export const fetchOpportunityDetails = async (
     // Fetch activities for this opportunity
     const activityData = await fetchActivitiesForOpportunity(token, oppId);
     setActivities(activityData);
+    console.log('🐛 Activities data received:', activityData);
+
     
   } catch (error) {
     console.error("Error fetching opportunity details:", error);
@@ -256,9 +268,19 @@ export const fetchOpportunitiesWithActivities = async (
     setLoading(true);
     setError(null);
     
+    // Get current user ID first
+    const currentUserId = await getCurrentUserId(token);
+    
+    if (!currentUserId) {
+      throw new Error("Could not determine current user ID");
+    }
+    
+    // Build the URL to fetch open opportunities for current user
+    const url = `${BASE_URL}/opportunities?$filter=statecode eq 0 and _ownerid_value eq ${currentUserId}&$select=name,opportunityid,_customerid_value,createdon,statecode,estimatedvalue,estimatedclosedate,actualclosedate&$expand=customerid_account($select=name)`;
+    
     console.log("Fetching opportunities list...");
     
-    const response = await fetch(OPPORTUNITIES_URL, {
+    const response = await fetch(url, {
       headers: { 
         "Authorization": `Bearer ${token}`,
         "Accept": "application/json",
@@ -275,7 +297,6 @@ export const fetchOpportunitiesWithActivities = async (
     }
     
     if (!response.ok) {
-      // Try to get more information about the error
       let errorText = '';
       try {
         const errorData = await response.json();
@@ -291,8 +312,59 @@ export const fetchOpportunitiesWithActivities = async (
     const data = await response.json();
     console.log(`Received ${data.value?.length || 0} opportunities`);
     
-    // Set opportunities
-    setOpportunities(data.value || []);
+    // Fetch activities for each opportunity
+    const opportunitiesWithActivities = await Promise.all(
+      (data.value || []).map(async (opportunity, index) => {
+        try {
+          // Ensure opportunity object always has an activities array
+          const opportunityId = opportunity.opportunityid;
+          if (!opportunityId) {
+            console.warn(`Skipping opportunity at index ${index} without ID`, opportunity);
+            return { 
+              ...opportunity, 
+              opportunities_list_index: index, // Use a more explicit name
+              activities: [], 
+              lastActivity: null 
+            };
+          }
+    
+          // Rest of the existing code remains the same...
+    
+          return {
+            ...opportunity,
+            opportunities_list_index: index, // Add this line
+            activities: activities,
+            lastActivity: activities.length > 0 
+              ? activities[0].createdon 
+              : null
+          };
+        } catch (error) {
+          console.error(`Error processing opportunity at index ${index}:`, error);
+          return {
+            ...opportunity,
+            opportunities_list_index: index, // Add this line
+            activities: [],
+            lastActivity: null
+          };
+        }
+      })
+    );
+
+    // Set opportunities with their activities
+    setOpportunities(opportunitiesWithActivities);
+    
+    try {
+      // Ensure each opportunity has an activities array
+      const processedOpportunities = opportunities.map(opp => ({
+        ...opp,
+        activities: []
+      }));
+      setOpportunities(processedOpportunities);
+    } catch (err) {
+      console.error("Error pre-processing opportunities:", err);
+    }
+
+
   } catch (error) {
     console.error("Error fetching opportunities:", error);
     setError(`Failed to fetch opportunities list: ${error.message}`);

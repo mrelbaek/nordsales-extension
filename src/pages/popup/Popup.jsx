@@ -43,26 +43,31 @@ const Popup = () => {
         
         if (token) {
           // Try to get current opportunity ID
-          const oppId = await getCurrentOpportunityId();
-          console.log("Current opportunity ID:", oppId);
-          setCurrentOpportunityId(oppId);
-          
-          // Fetch data
-          if (oppId) {
-            await handleFetchOpportunityDetails(token, oppId);
-          } else {
+          try {
+            const oppId = await getCurrentOpportunityId();
+            console.log("Current opportunity ID:", oppId);
+            setCurrentOpportunityId(oppId);
+            
+            // Fetch data
+            if (oppId) {
+              await handleFetchOpportunityDetails(token, oppId);
+            } else {
+              await handleFetchOpportunities(token);
+            }
+          } catch (idError) {
+            console.warn("Error getting opportunity ID:", idError);
             await handleFetchOpportunities(token);
           }
         } else {
           console.log("No valid token found, user needs to log in.");
         }
-
+  
         // Get the auto-open preference
         chrome.storage.local.get(['autoOpen'], (result) => {
           setAutoOpen(result.autoOpen !== false);
         });
       } catch (error) {
-        console.warn("Initialization error:", error);
+        console.error("Initialization error:", error);
         setError("Failed to initialize extension: " + error.message);
         setDebugInfo({
           errorType: "Initialization Error",
@@ -164,6 +169,7 @@ const Popup = () => {
     try {
       setLoading(true);
       setError(null);
+      
       
       // Call the utility function ONLY ONCE with all required state setters
       await fetchOpportunityDetails(
@@ -286,41 +292,80 @@ const Popup = () => {
    * Render appropriate content based on app state
    */
   const renderContent = () => {
-    console.log("renderContent called, activities state:", activities);
-    
-    if (!accessToken) {
-      return <Login onLogin={handleLogin} />;
-    }
+    try {
+      // Add explicit logging
+      console.log('RENDER CONTENT DEBUG:');
+      console.log('Access Token:', !!accessToken);
+      console.log('Current Opportunity:', currentOpportunity);
+      console.log('Opportunities Count:', opportunities.length);
+      console.log('Opportunities:', JSON.stringify(opportunities.map(o => ({
+        id: o.opportunityid, 
+        name: o.name, 
+        activitiesCount: o.activities?.length || 0
+      })), null, 2));
   
-    if (currentOpportunity) {
-      console.log("Rendering OpportunityDetail with:", {
-        opportunity: currentOpportunity,
-        activities: activities, 
-        activitiesLength: activities?.length
-      });
-      
+      if (!accessToken) {
+        return <Login onLogin={handleLogin} />;
+      }
+    
+      if (currentOpportunity) {
+        return (
+          <OpportunityDetail 
+            opportunity={currentOpportunity}
+            activities={activities || []}
+            onBackClick={handleBackToList}
+            toggleAutoOpen={toggleAutoOpen}
+            autoOpen={autoOpen}
+          />
+        );
+      }
+    
       return (
-        <OpportunityDetail 
-          opportunity={currentOpportunity}
-          activities={activities}
-          onBackClick={handleBackToList}
+        <OpportunityList 
+          opportunities={(() => {
+            try {
+              if (!Array.isArray(opportunities)) {
+                console.warn("Opportunities is not an array:", opportunities);
+                return [];
+              }
+              
+              return opportunities.map((opp) => {
+                console.log(`Processing opportunity:`, opp);
+                if (!opp) {
+                  console.warn("Received undefined opportunity object");
+                  return {
+                    opportunityid: `unknown-${Math.random().toString(36).substring(7)}`,
+                    name: "Unknown opportunity",
+                    activities: [],
+                    opportunityIndex: 0,
+                    lastActivity: null
+                  };
+                }
+                
+                return {
+                  ...opp,
+                  opportunityIndex: opp.opportunities_list_index ?? 0, 
+                  activities: [], // Always set activities to an empty array for now
+                  lastActivity: null // Always set lastActivity to null for now
+                };
+              });
+            } catch (mapError) {
+              console.error('Error mapping opportunities:', mapError);
+              return [];
+            }
+          })()}
+          loading={loading}
+          onLogout={handleLogout}
+          onOpportunitySelect={handleOpportunitySelect}
           toggleAutoOpen={toggleAutoOpen}
           autoOpen={autoOpen}
+          onFetchMyOpenOpportunities={handleFetchMyOpenOpportunities}
         />
       );
+    } catch (renderError) {
+      console.error('FATAL RENDER ERROR:', renderError);
+      return <div>Error rendering content: {renderError.message}</div>;
     }
-  
-    return (
-      <OpportunityList 
-        opportunities={opportunities}
-        loading={loading}
-        onLogout={handleLogout}
-        onOpportunitySelect={handleOpportunitySelect}
-        toggleAutoOpen={toggleAutoOpen}
-        autoOpen={autoOpen}
-        onFetchMyOpenOpportunities={handleFetchMyOpenOpportunities}
-      />
-    );
   };
 
   return (
@@ -333,16 +378,14 @@ const Popup = () => {
       flexDirection: "column",
       backgroundColor: "#f3f2f1"
     }}>
-      {/* Error message if any */}
       <ErrorMessage 
         message={error} 
         onDismiss={() => setError(null)} 
       />
 
-      {/* Main content */}
       {renderContent()}
       
-      {/* Debug panel - can be removed in production */}
+      {/* Debug panel */}
       <div style={{ 
         position: "fixed", 
         bottom: "0", 
@@ -356,6 +399,7 @@ const Popup = () => {
           <summary>Debug</summary>
           <div>Token: {accessToken ? 'Yes' : 'No'}</div>
           <div>ID: {currentOpportunityId || 'None'}</div>
+          <div>Opportunities: {opportunities.length}</div>
         </details>
       </div>
     </div>

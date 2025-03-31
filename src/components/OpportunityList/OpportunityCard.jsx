@@ -11,6 +11,11 @@ import { getActivityDate, getActivityRecencyLabel } from '../../utils/activityUt
  * @returns {JSX.Element} Opportunity card component
  */
 const OpportunityCard = ({ opportunity, onClick }) => {
+  // Ensure activities is an array and fallback to empty array
+  const activities = Array.isArray(opportunity?.activities) 
+    ? opportunity.activities 
+    : [];
+
   // Calculate days open
   const daysOpen = calculateDaysBetween(opportunity.createdon, null);
   
@@ -28,22 +33,34 @@ const OpportunityCard = ({ opportunity, onClick }) => {
     const weeks = 8;
     const weeklyCounts = Array(weeks).fill(0);
     
-    if (opportunity.activities && opportunity.activities.length > 0) {
+    console.log('🚨 Opportunity activities in card::', activities); // Use the local activities variable
+  
+    if (activities && activities.length > 0) {
       const now = new Date();
       const msPerWeek = 7 * 24 * 60 * 60 * 1000;
       
-      opportunity.activities.forEach(activity => {
+      activities.forEach((activity, index) => { // Add index parameter here
+        console.log(`🚨 Activity ${index}:`, activity);
         const date = getActivityDate(activity);
         
+        console.log(`🚨 Activity ${index} date:`, date);
+  
         // Ignore if date is missing or invalid
-        if (!date || isNaN(date)) return;
+        if (!date || isNaN(date)) {
+          console.warn(`🚨 Invalid date for activity ${index}:`, activity);
+          return;
+        }
         
         const weeksDiff = Math.floor((now - date) / msPerWeek);
+  
+        console.log(`🚨 Activity ${index} weeks diff:`, weeksDiff);
         
         if (weeksDiff >= 0 && weeksDiff < weeks) {
           weeklyCounts[weeksDiff]++;
         }
       });
+    } else {
+      console.warn('🚨 No activities or empty activities array', opportunity);
     }
     
     // Find max for scaling

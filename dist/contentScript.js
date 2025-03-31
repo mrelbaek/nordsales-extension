@@ -1,62 +1,134 @@
-// Simple content script that just extracts and reports the opportunity ID
 (function() {
-    // One-time function to extract and report opportunity ID
-    function reportOpportunityId() {
-      const url = window.location.href;
-      const idMatch = url.match(/[?&]id=([^&]*)/);
+  // Logging function to help with debugging
+  function log(message, ...args) {
+      console.log(`[NordSales ContentScript] ${message}`, ...args);
+  }
 
-      console.log("Content script starting on URL:", window.location.href);
-      console.log("Host:", window.location.host);
-      
-      // Only proceed if we find an ID
-      if (idMatch && idMatch[1]) {
-        const opportunityId = idMatch[1];
-        console.log("Opportunity ID detected:", opportunityId);
-        
-        // Store directly in storage
-        try {
-          chrome.storage.local.set({
-            currentOpportunityId: opportunityId,
-            lastUpdated: Date.now(),
-            currentUrl: url
-          });
-        } catch(e) {
-          // Ignore storage errors
-          console.log("Error storing opportunity ID:", e);
-        }
-      } else {
-        // No opportunity ID found, clear from storage
-        try {
-          chrome.storage.local.remove(['currentOpportunityId', 'lastUpdated']);
-        } catch(e) {
-          // Ignore storage errors
-          console.log("Error clearing opportunity ID:", e);
-        }
+  // Function to extract opportunity ID from the current URL
+  function extractOpportunityId() {
+      const url = window.location.href;
+      log("Current URL:", url);
+      log("Host:", window.location.host);
+
+      // Regex to match opportunity ID in different URL formats
+      const idPatterns = [
+          /[?&]id=([^&]*)/,  // Standard query parameter
+          /opportunities\/([^/]+)/,  // Path-based URL
+          /guid='([^']+)'/  // GUID format
+      ];
+
+      for (const pattern of idPatterns) {
+          const idMatch = url.match(pattern);
+          if (idMatch && idMatch[1]) {
+              log("Opportunity ID detected:", idMatch[1]);
+              return idMatch[1];
+          }
       }
-    }
-    
-    // Execute once when loaded
-    reportOpportunityId();
-    
-    // Simple message listener that doesn't maintain state
-    chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
-      console.log("Message received in content script:", message);
-      
-      if (message.type === "CHECK_OPPORTUNITY_ID") {
-        // Re-check the URL when requested
-        const url = window.location.href;
-        console.log("Current URL checked:", url);
-        const idMatch = url.match(/[?&]id=([^&]*)/);
-        
-        const response = {
-          opportunityId: idMatch && idMatch[1] ? idMatch[1] : null,
-          url: url
-        };
-        console.log("Sending response:", response);
-        sendResponse(response);
+
+      return null;
+  }
+
+  // Function to store or clear opportunity ID
+  function manageOpportunityId() {
+      const opportunityId = extractOpportunityId();
+
+      try {
+          if (opportunityId) {
+              chrome.storage.local.set({
+                  currentOpportunityId: opportunityId,
+                  lastUpdated: Date.now(),
+                  currentUrl: window.location.href
+              }, () => {
+                  log("Opportunity ID stored successfully:", opportunityId);
+              });
+          } else {
+              chrome.storage.local.remove(['currentOpportunityId', 'lastUpdated'], () => {
+                  log("Cleared opportunity ID from storage");
+              });
+          }
+      } catch (e) {
+          log("Error managing opportunity ID:", e);
       }
-      return true; // Keep the message channel open for async response
-    });
-    
-    console.log("NordSales Extension content script loaded");
-  })();
+  }
+
+  // Initial execution when script loads
+  function initialize() {
+      log("Content script initialized");
+      
+      // Run initial ID detection
+      manageOpportunityId();
+
+      // Optional: Set up MutationObserver to detect dynamic page changes
+      const observer = new MutationObserver((mutations) => {
+          const isRelevantChange = mutations.some(mutation => 
+              mutation.type === 'attributes' || 
+              mutation.type === 'childList'
+          );
+
+          if (isRelevantChange) {
+              manageOpportunityId();
+          }
+      });
+
+      observer.observe(document.body, {
+          attributes: true,
+          childList: true,
+          subtree: true
+      });
+  }
+
+  // Message listener for extension communication
+  function setupMessageListener() {
+      chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+          log("Message received:", message);
+
+          switch (message.type) {
+              case "CHECK_OPPORTUNITY_ID":
+                  const opportunityId = extractOpportunityId();
+                  const response = {
+                      opportunityId: opportunityId,
+                      url: window.location.href,
+                      timestamp: Date.now()
+                  };
+
+                  log("Sending opportunity ID response:", response);
+                  
+                  try {
+                      sendResponse(response);
+                  } catch (error) {
+                      log("Error sending response:", error);
+                  }
+                  
+                  return true;  // Required for async sendResponse
+
+              case "REFRESH_OPPORTUNITY_ID":
+                  manageOpportunityId();
+                  sendResponse({ status: "refreshed" });
+                  return true;
+
+              default:
+                  log("Unhandled message type:", message.type);
+                  return false;
+          }
+      });
+  }
+
+  // Check if we're on a Dynamics CRM page before running
+  function isDynamicsCrmPage() {
+      return window.location.href.includes('crm.dynamics.com');
+  }
+
+  // Main execution
+  function main() {
+      if (!isDynamicsCrmPage()) {
+          log("Not a Dynamics CRM page. Skipping initialization.");
+          return;
+      }
+
+      initialize();
+      setupMessageListener();
+  }
+
+  // Run main function
+  main();
+})();

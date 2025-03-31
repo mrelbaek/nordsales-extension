@@ -327,12 +327,29 @@ export const fetchOpportunitiesWithActivities = async (
               lastActivity: null 
             };
           }
-    
-          // Rest of the existing code remains the same...
+          
+          // Fetch activities for this opportunity
+          // NOTE: Fixed reference to activities by capturing the result of the API call
+          const activitiesUrl = `${BASE_URL}/activitypointers?$filter=_regardingobjectid_value eq ${opportunityId}&$select=activityid,subject,activitytypecode,scheduledstart,actualstart,createdon&$orderby=createdon desc`;
+          
+          const activitiesResponse = await fetch(activitiesUrl, {
+            headers: { 
+              "Authorization": `Bearer ${token}`,
+              "Accept": "application/json",
+              "OData-MaxVersion": "4.0",
+              "OData-Version": "4.0"
+            },
+          });
+          
+          let activities = [];
+          if (activitiesResponse.ok) {
+            const activitiesData = await activitiesResponse.json();
+            activities = activitiesData.value || [];
+          }
     
           return {
             ...opportunity,
-            opportunities_list_index: index, // Add this line
+            opportunities_list_index: index,
             activities: activities,
             lastActivity: activities.length > 0 
               ? activities[0].createdon 
@@ -342,7 +359,7 @@ export const fetchOpportunitiesWithActivities = async (
           console.error(`Error processing opportunity at index ${index}:`, error);
           return {
             ...opportunity,
-            opportunities_list_index: index, // Add this line
+            opportunities_list_index: index,
             activities: [],
             lastActivity: null
           };
@@ -352,18 +369,6 @@ export const fetchOpportunitiesWithActivities = async (
 
     // Set opportunities with their activities
     setOpportunities(opportunitiesWithActivities);
-    
-    try {
-      // Ensure each opportunity has an activities array
-      const processedOpportunities = opportunities.map(opp => ({
-        ...opp,
-        activities: []
-      }));
-      setOpportunities(processedOpportunities);
-    } catch (err) {
-      console.error("Error pre-processing opportunities:", err);
-    }
-
 
   } catch (error) {
     console.error("Error fetching opportunities:", error);

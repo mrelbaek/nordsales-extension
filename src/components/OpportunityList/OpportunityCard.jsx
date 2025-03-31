@@ -33,17 +33,32 @@ const OpportunityCard = ({ opportunity, onClick }) => {
     const weeks = 8;
     const weeklyCounts = Array(weeks).fill(0);
     
-    console.log('🚨 Opportunity activities in card::', activities); // Use the local activities variable
+    // Ensure activities is an array and exists
+    const safeActivities = Array.isArray(activities) ? activities : [];
+    
+    console.log('🚨 Opportunity activities in card::', safeActivities);
   
-    if (activities && activities.length > 0) {
+    if (safeActivities.length > 0) {
       const now = new Date();
       const msPerWeek = 7 * 24 * 60 * 60 * 1000;
       
-      activities.forEach((activity, index) => { // Add index parameter here
-        console.log(`🚨 Activity ${index}:`, activity);
-        const date = getActivityDate(activity);
+      safeActivities.forEach((activity, index) => {
+        if (!activity) {
+          console.warn(`🚨 Null activity at index ${index}`);
+          return;
+        }
         
-        console.log(`🚨 Activity ${index} date:`, date);
+        console.log(`🚨 Activity ${index}:`, activity);
+        
+        // Safely get the activity date
+        let date = null;
+        try {
+          date = getActivityDate(activity);
+          console.log(`🚨 Activity ${index} date:`, date);
+        } catch (err) {
+          console.warn(`🚨 Error getting date for activity ${index}:`, err);
+          return;
+        }
   
         // Ignore if date is missing or invalid
         if (!date || isNaN(date)) {
@@ -52,7 +67,6 @@ const OpportunityCard = ({ opportunity, onClick }) => {
         }
         
         const weeksDiff = Math.floor((now - date) / msPerWeek);
-  
         console.log(`🚨 Activity ${index} weeks diff:`, weeksDiff);
         
         if (weeksDiff >= 0 && weeksDiff < weeks) {

@@ -329,6 +329,7 @@ const Popup = () => {
                 return [];
               }
               
+              // Map each opportunity with proper safety checks
               return opportunities.map((opp) => {
                 console.log(`Processing opportunity:`, opp);
                 if (!opp) {
@@ -342,12 +343,17 @@ const Popup = () => {
                   };
                 }
                 
-                return {
+                // Ensure activities is always an array
+                const safeOpp = {
                   ...opp,
-                  opportunityIndex: opp.opportunities_list_index ?? 0, 
-                  activities: [], // Always set activities to an empty array for now
-                  lastActivity: null // Always set lastActivity to null for now
+                  opportunityIndex: opp.opportunities_list_index ?? 0,
+                  // Make sure activities is always an array
+                  activities: Array.isArray(opp.activities) ? opp.activities : [],
+                  // Safety check for lastActivity
+                  lastActivity: opp.lastActivity || null
                 };
+                
+                return safeOpp;
               });
             } catch (mapError) {
               console.error('Error mapping opportunities:', mapError);

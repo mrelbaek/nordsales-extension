@@ -480,6 +480,86 @@ export const formatOpportunityData = (opportunity) => {
 };
 
 /**
+ * Fetch closed opportunities for the current user
+ * @param {string} token - Access token for Dynamics CRM
+ * @param {Function} setLoading - State setter for loading indicator
+ * @param {Function} setError - State setter for error message
+ * @param {Function} setClosedOpportunities - State setter for closed opportunities data
+ * @returns {Promise<void>}
+ */
+export const fetchClosedOpportunities = async (
+  token,
+  setLoading,
+  setError,
+  setClosedOpportunities
+) => {
+  try {
+    if (setLoading) setLoading(true);
+    if (setError) setError(null);
+    
+    // Get current user ID first
+    const currentUserId = await getCurrentUserId(token);
+    
+    if (!currentUserId) {
+      throw new Error("Could not determine current user ID");
+    }
+    
+    // Build the URL to fetch closed opportunities for current user
+    const url = `${BASE_URL}/opportunities?$filter=statecode ne 0 and _ownerid_value eq ${currentUserId}&$select=name,statecode,opportunityid,totalamount,actualclosedate,totaldiscountamount,exchangerate,createdon&$orderby=actualclosedate desc`;
+    
+    console.log("Fetching closed opportunities...");
+    
+    const response = await fetch(url, {
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Accept": "application/json",
+        "OData-MaxVersion": "4.0",
+        "OData-Version": "4.0"
+      },
+    });
+    
+    if (response.status === 401) {
+      console.warn("Authentication token expired or invalid");
+      throw new Error("Authentication failed. Please log in again.");
+    }
+    
+    if (!response.ok) {
+      let errorText = '';
+      try {
+        const errorData = await response.json();
+        errorText = JSON.stringify(errorData);
+      } catch (e) {
+        errorText = await response.text();
+      }
+      
+      console.error(`API Error: ${response.status}`, errorText);
+      throw new Error(`Failed to fetch closed opportunities: ${response.status} - ${errorText}`);
+    }
+    
+    const data = await response.json();
+    console.log(`Received ${data.value?.length || 0} closed opportunities`);
+    
+    // Filter out opportunities without closing date
+    const validOpportunities = (data.value || []).filter(opp => 
+      opp.actualclosedate && opp.createdon
+    );
+    
+    // Set opportunities in state
+    if (setClosedOpportunities) {
+      setClosedOpportunities(validOpportunities);
+    }
+    
+    return validOpportunities;
+  } catch (error) {
+    console.error("Error fetching closed opportunities:", error);
+    if (setError) setError(`Failed to fetch closed opportunities: ${error.message}`);
+    return [];
+  } finally {
+    if (setLoading) setLoading(false);
+  }
+};
+
+/**
  * Convert status code to user-friendly label
  * @param {number} statusCode - Dynamics CRM status code
  * @returns {string} User-friendly status label

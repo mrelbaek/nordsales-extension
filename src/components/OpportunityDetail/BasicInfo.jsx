@@ -1,14 +1,22 @@
 import React from 'react';
+import AccordionSection from '../common/AccordionSection';
 
 /**
  * Basic opportunity information component
  * 
  * @param {Object} props - Component props
  * @param {Object} props.opportunity - Opportunity data
+ * @param {boolean} props.isOpen - Whether section is expanded
+ * @param {Function} props.onToggle - Function to call when toggling section
  * @returns {JSX.Element} Basic info component
  */
-const BasicInfo = ({ opportunity }) => {
+const BasicInfo = ({ opportunity, isOpen, onToggle }) => {
   return (
+    <AccordionSection
+    title="Basic Info"
+    isOpen={isOpen}
+    onToggle={onToggle}
+    >
     <div style={{ marginBottom: "16px", backgroundColor: "white", borderRadius: "8px", overflow: "hidden", padding: "16px" }}>
       <h3 style={{ margin: "0 0 12px 0", fontSize: "16px" }}>Opportunity Details</h3>
       
@@ -63,6 +71,7 @@ const BasicInfo = ({ opportunity }) => {
         </a>
       </div>
     </div>
+    </AccordionSection>
   );
 };
 

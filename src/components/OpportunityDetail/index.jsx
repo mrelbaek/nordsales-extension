@@ -11,6 +11,8 @@ import BasicInfo from './BasicInfo';
  * 
  * @param {Object} props - Component props
  * @param {Object} props.opportunity - Opportunity data
+ * @param {Array} props.activities - Activities data
+ * @param {Array} props.closedOpportunities - Closed opportunities data
  * @param {Function} props.onBackClick - Function to call when back button is clicked
  * @param {Function} props.toggleAutoOpen - Function to call when auto-open toggle is clicked
  * @param {boolean} props.autoOpen - Whether auto-open is enabled
@@ -19,6 +21,7 @@ import BasicInfo from './BasicInfo';
 const OpportunityDetail = ({ 
   opportunity, 
   activities,
+  closedOpportunities = [],
   onBackClick,
   toggleAutoOpen,
   autoOpen
@@ -27,7 +30,8 @@ const OpportunityDetail = ({
     statistics: true,
     entries: true,
     analytics: true,
-    timeline: true
+    basicInfo: false,
+    timeline: false
   });
 
   const toggleAccordion = (section) => {
@@ -106,18 +110,20 @@ const OpportunityDetail = ({
           onToggle={() => toggleAccordion('statistics')}
         />
 
+        {/* Analytics Section */}
+        <Analytics 
+          activities={activities}
+          closedOpportunities={closedOpportunities}
+          opportunity={opportunity}
+          isOpen={accordionState.analytics}
+          onToggle={() => toggleAccordion('analytics')}
+        />
+
         {/* Calendar Section */}
         <Calendar 
           activities={activities} 
           isOpen={accordionState.entries}
           onToggle={() => toggleAccordion('entries')}
-        />
-
-        {/* Analytics Section */}
-        <Analytics 
-          activities={activities} 
-          isOpen={accordionState.analytics}
-          onToggle={() => toggleAccordion('analytics')}
         />
 
         {/* Timeline Log Section */}
@@ -128,7 +134,11 @@ const OpportunityDetail = ({
         />
 
         {/* Basic Info Section */}
-        <BasicInfo opportunity={opportunity} />
+        <BasicInfo 
+          opportunity={opportunity} 
+          isOpen={accordionState.basicInfo}
+          onToggle={() => toggleAccordion('basicInfo')}
+        />
       </div>
 
       {/* Auto-open toggle */}

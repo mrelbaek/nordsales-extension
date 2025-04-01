@@ -4,7 +4,8 @@ import {
   getCurrentOpportunityId,
   fetchOpportunityDetails,
   fetchOpportunitiesWithActivities,
-  fetchMyOpenOpportunities
+  fetchMyOpenOpportunities,
+  fetchClosedOpportunities
 } from "../../utils/opportunityUtils.js";
 import ErrorMessage from "../../components/common/ErrorMessage.jsx";
 import Login from "../../components/Login.jsx";
@@ -23,6 +24,7 @@ const Popup = () => {
   const [error, setError] = useState(null);
   const [autoOpen, setAutoOpen] = useState(true);
   const [activities, setActivities] = useState([]);
+  const [closedOpportunities, setClosedOpportunities] = useState([]);
   const [debugInfo, setDebugInfo] = useState(null);
 
   // Initialize the app
@@ -54,9 +56,13 @@ const Popup = () => {
             } else {
               await handleFetchOpportunities(token);
             }
+            
+            // Also fetch closed opportunities for analytics
+            await handleFetchClosedOpportunities(token);
           } catch (idError) {
             console.warn("Error getting opportunity ID:", idError);
             await handleFetchOpportunities(token);
+            await handleFetchClosedOpportunities(token);
           }
         } else {
           console.log("No valid token found, user needs to log in.");
@@ -163,6 +169,23 @@ const Popup = () => {
   }, []);
 
   /**
+   * Fetch closed opportunities and set state
+   */
+  const handleFetchClosedOpportunities = async (token) => {
+    try {
+      await fetchClosedOpportunities(
+        token,
+        setLoading,
+        setError,
+        setClosedOpportunities
+      );
+    } catch (error) {
+      console.error("Error fetching closed opportunities:", error);
+      setError(`Failed to fetch closed opportunities: ${error.message}`);
+    }
+  };
+
+  /**
    * Fetch opportunity details and set state
    */
   const handleFetchOpportunityDetails = async (token, oppId) => {
@@ -170,8 +193,7 @@ const Popup = () => {
       setLoading(true);
       setError(null);
       
-      
-      // Call the utility function ONLY ONCE with all required state setters
+      // Call the utility function to fetch opportunity details
       await fetchOpportunityDetails(
         token, 
         oppId, 
@@ -180,6 +202,9 @@ const Popup = () => {
         setCurrentOpportunity, 
         setActivities
       );
+      
+      // Also fetch closed opportunities for analytics
+      await handleFetchClosedOpportunities(token);
     } catch (error) {
       console.error("Error fetching opportunity details:", error);
       setError(`Failed to fetch opportunity details: ${error.message}`);
@@ -217,6 +242,9 @@ const Popup = () => {
         setError,
         setOpportunities
       );
+      
+      // Also refresh closed opportunities
+      await handleFetchClosedOpportunities(accessToken);
     } catch (error) {
       console.error("Error fetching my opportunities:", error);
       setError(`Failed to fetch opportunities list: ${error.message}`);
@@ -238,6 +266,7 @@ const Popup = () => {
         handleFetchOpportunityDetails(token, currentOpportunityId);
       } else {
         handleFetchOpportunities(token);
+        handleFetchClosedOpportunities(token);
       }
     } catch (error) {
       console.error("Login failed:", error);
@@ -254,6 +283,7 @@ const Popup = () => {
     setOpportunities([]);
     setCurrentOpportunity(null);
     setActivities([]);
+    setClosedOpportunities([]);
     setError(null);
     setDebugInfo(null);
   };
@@ -298,6 +328,7 @@ const Popup = () => {
       console.log('Access Token:', !!accessToken);
       console.log('Current Opportunity:', currentOpportunity);
       console.log('Opportunities Count:', opportunities.length);
+      console.log('Closed Opportunities Count:', closedOpportunities.length);
       console.log('Opportunities:', JSON.stringify(opportunities.map(o => ({
         id: o.opportunityid, 
         name: o.name, 
@@ -313,6 +344,7 @@ const Popup = () => {
           <OpportunityDetail 
             opportunity={currentOpportunity}
             activities={activities || []}
+            closedOpportunities={closedOpportunities || []}
             onBackClick={handleBackToList}
             toggleAutoOpen={toggleAutoOpen}
             autoOpen={autoOpen}
@@ -406,6 +438,7 @@ const Popup = () => {
           <div>Token: {accessToken ? 'Yes' : 'No'}</div>
           <div>ID: {currentOpportunityId || 'None'}</div>
           <div>Opportunities: {opportunities.length}</div>
+          <div>Closed Opportunities: {closedOpportunities.length}</div>
         </details>
       </div>
     </div>

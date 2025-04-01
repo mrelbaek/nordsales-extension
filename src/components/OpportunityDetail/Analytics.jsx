@@ -1,77 +1,398 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { calculateDaysSinceLastContact } from '../../utils/activityUtils';
+import { calculateDaysBetween } from '../../utils/dateUtils';
 import AccordionSection from '../common/AccordionSection';
+import { BASE_URL } from '../../constants'; // Import BASE_URL from constants
+import { getOpportunityUrl } from '../../utils/opportunityUtils'; // Import the utility function if available
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend
+} from 'chart.js';
+import { Bar } from 'react-chartjs-2';
+
+// Register ChartJS components
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend
+);
+
+/**
+ * Generate opportunity URL based on opportunity ID
+ * Uses the existing getOpportunityUrl utility if available, otherwise constructs the URL
+ * 
+ * @param {string} opportunityId - ID of the opportunity
+ * @returns {string|null} URL to view the opportunity
+ */
+const generateOpportunityUrl = (opportunityId) => {
+  if (!opportunityId) return null;
+  
+  // If getOpportunityUrl utility is imported, use it
+  if (typeof getOpportunityUrl === 'function') {
+    return getOpportunityUrl(opportunityId);
+  }
+  
+  // Otherwise, construct the URL using BASE_URL
+  // Extract the organization ID from BASE_URL
+  // URL format is typically: https://orgXXXXXXX.crm.dynamics.com/api/data/v9.2
+  const orgMatch = BASE_URL.match(/https:\/\/([^.]+)\.crm\.dynamics\.com/);
+  const orgId = orgMatch ? orgMatch[1] : '';
+  
+  if (!orgId) return null;
+  
+  // Construct the URL (this is a fallback, ideally you should use your existing utility)
+  return `https://${orgId}.crm.dynamics.com/main.aspx?pagetype=entityrecord&etn=opportunity&id=${opportunityId}`;
+};
 
 /**
  * Analytics component for opportunity metrics
  * 
  * @param {Object} props - Component props
  * @param {Array} props.activities - Activities to analyze
+ * @param {Array} props.closedOpportunities - Closed opportunities data
+ * @param {Object} props.opportunity - Current opportunity data
  * @param {boolean} props.isOpen - Whether section is expanded
  * @param {Function} props.onToggle - Function to call when toggling section
  * @returns {JSX.Element} Analytics component
  */
-const Analytics = ({ activities = [], isOpen, onToggle }) => {
+const Analytics = ({ activities = [], closedOpportunities = [], opportunity, isOpen, onToggle }) => {
+  const [averageClosingTime, setAverageClosingTime] = useState(0);
+  const [chartData, setChartData] = useState({ labels: [], datasets: [] });
+  const [currentOpportunityDays, setCurrentOpportunityDays] = useState(0);
+  const [tooltipData, setTooltipData] = useState([]);
+  const chartRef = useRef(null);
+
+  // Calculate current opportunity days open
+  useEffect(() => {
+    if (opportunity && opportunity.createdon) {
+      const days = calculateDaysBetween(opportunity.createdon, new Date());
+      setCurrentOpportunityDays(days);
+    }
+  }, [opportunity]);
+
+  // Calculate closing times and prepare chart data
+  useEffect(() => {
+    if (closedOpportunities && closedOpportunities.length > 0) {
+      // Take only the last 7 closed opportunities and sort by actualclosedate
+      const sortedOpportunities = [...closedOpportunities]
+        .sort((a, b) => new Date(b.actualclosedate) - new Date(a.actualclosedate))
+        .slice(0, 7);
+      
+      // Calculate closing times (days between creation and close)
+      const times = sortedOpportunities.map(opp => {
+        const createdDate = new Date(opp.createdon);
+        const closedDate = new Date(opp.actualclosedate);
+        
+        // Return difference in days
+        return Math.floor((closedDate - createdDate) / (1000 * 60 * 60 * 24));
+      });
+      
+      // Create tooltip data for closed opportunities
+      const tooltips = sortedOpportunities.map(opp => ({
+        name: opp.name || 'Unnamed Opportunity',
+        description: opp.description || '',
+        value: opp.estimatedvalue || opp.totalamount || 0,
+        status: opp.statecode === 0 ? 'Open' : opp.statecode === 1 ? 'Won' : 'Lost',
+        id: opp.opportunityid,
+        daysOpen: Math.floor((new Date(opp.actualclosedate) - new Date(opp.createdon)) / (1000 * 60 * 60 * 24)),
+        url: generateOpportunityUrl(opp.opportunityid)
+      }));
+      
+      // Create labels for the chart
+      const labels = sortedOpportunities.map((_, index) => `Opp ${index + 1}`);
+      
+      // Create data array with closed opportunities
+      const data = [...times];
+      
+      // Create background colors array (gray with transparency)
+      const backgroundColors = Array(times.length).fill('rgba(189, 189, 189, 0.7)'); // Grey with transparency
+      
+      // Add current opportunity data and tooltip
+      let updatedTooltips = [...tooltips];
+      
+      if (opportunity && opportunity.createdon) {
+        labels.unshift('Current');
+        data.unshift(currentOpportunityDays);
+        backgroundColors.unshift('rgba(196, 228, 86, 0.8)'); // Lime green with transparency
+        
+        // Add current opportunity tooltip
+        updatedTooltips.unshift({
+          name: opportunity.name || 'Current Opportunity',
+          description: opportunity.description || '',
+          value: opportunity.estimatedvalue || 0,
+          status: 'Open',
+          daysOpen: currentOpportunityDays,
+          url: generateOpportunityUrl(opportunity.opportunityid)
+        });
+      }
+      
+      setTooltipData(updatedTooltips);
+      
+      // Calculate average (excluding current opportunity for accurate historical average)
+      const avgTime = Math.round(times.reduce((acc, time) => acc + time, 0) / (times.length || 1));
+      console.log("Average closing time calculated:", avgTime, "days");
+      
+      setAverageClosingTime(avgTime);
+      
+      // Set chart data
+      setChartData({
+        labels,
+        datasets: [
+          {
+            label: 'Days',
+            data,
+            backgroundColor: backgroundColors,
+            borderRadius: 4,
+            borderSkipped: false,
+            barThickness: 30,
+          }
+        ]
+      });
+    }
+  }, [closedOpportunities, opportunity, currentOpportunityDays]);
+
+  // Function to handle bar click
+  const handleBarClick = (event) => {
+    if (!chartRef.current) {
+      console.log("Chart ref is not available");
+      return;
+    }
+    
+    const chart = chartRef.current;
+    
+    // Get the activeElements from the chart
+    const activePoints = chart.getElementsAtEventForMode(
+      event.nativeEvent,
+      'nearest',
+      { intersect: true },
+      false
+    );
+    
+    // If no point was clicked, do nothing
+    if (activePoints.length === 0) {
+      console.log("No active points found");
+      return;
+    }
+    
+    // Get the clicked bar's data
+    const clickedIndex = activePoints[0].index;
+    const opportunityData = tooltipData[clickedIndex];
+    
+    console.log("Clicked opportunity:", opportunityData);
+    
+    // If we have a valid URL, open it
+    if (opportunityData && opportunityData.url) {
+      console.log("Opening URL:", opportunityData.url);
+      window.open(opportunityData.url, '_blank');
+    } else if (opportunityData && opportunityData.id) {
+      // As a fallback, try to construct a basic URL
+      const url = generateOpportunityUrl(opportunityData.id);
+      console.log("Opening fallback URL:", url);
+      if (url) window.open(url, '_blank');
+    }
+  };
+
+  // Chart options
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        display: false,
+      },
+      tooltip: {
+        callbacks: {
+          title: function(context) {
+            const index = context[0].dataIndex;
+            const tooltipItem = tooltipData[index];
+            return tooltipItem ? tooltipItem.name : `Opportunity ${index + 1}`;
+          },
+          label: function(context) {
+            const index = context.dataIndex;
+            const tooltipItem = tooltipData[index];
+            
+            if (!tooltipItem) return `${context.raw} days`;
+            
+            const lines = [
+              `Days Open: ${tooltipItem.daysOpen}`,
+              `Value: $${tooltipItem.value.toLocaleString()}`,
+              `Status: ${tooltipItem.status}`
+            ];
+
+            if (tooltipItem.id) {
+              lines.push(`ID: ${tooltipItem.id}`);
+            }
+            
+            lines.push('Click to open opportunity');
+            
+            return lines;
+          }
+        }
+      }
+    },
+    scales: {
+      y: {
+        beginAtZero: true,
+        grid: {
+          drawBorder: false,
+        },
+        ticks: {
+          font: {
+            size: 12,
+          },
+        },
+      },
+      x: {
+        grid: {
+          display: false,
+        },
+        ticks: {
+          font: {
+            size: 12,
+          },
+        },
+      },
+    },
+    animation: {
+      duration: 500,
+    },
+    
+    // Make the chart interactive with a cursor pointer
+    onHover: (event, chartElement) => {
+      if (event.native) {
+        event.native.target.style.cursor = chartElement.length ? 'pointer' : 'default';
+      }
+    }
+  };
+
+  // Add the plugin for rendering the average line
+  const averageLinePlugin = {
+    id: 'averageLine',
+    afterDraw: (chart) => {
+      // Force the line to be drawn at the calculated average
+      // regardless of state synchronization issues
+      const avgValue = averageClosingTime; // Use the value we know is correct
+      
+      const ctx = chart.ctx;
+      const yAxis = chart.scales.y;
+      const xAxis = chart.scales.x;
+      
+      if (yAxis && xAxis) {
+        const yPos = yAxis.getPixelForValue(avgValue);
+        
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(xAxis.left, yPos);
+        ctx.lineTo(xAxis.right, yPos);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#c4e456';
+        ctx.stroke();
+        ctx.restore();
+        
+        console.log(`Successfully drew line at ${avgValue} days, Y=${yPos}`);
+      } else {
+        console.log('Could not draw line, scales not available');
+      }
+    }
+  };
+
   return (
     <AccordionSection
       title="Analytics"
       isOpen={isOpen}
       onToggle={onToggle}
     >
-      {activities && activities.length > 0 ? (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
-          {/* Days Since Last Contact */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "20px" }}>
+        {/* Days Since Last Contact */}
+        <div style={{ 
+          padding: "16px", 
+          borderRadius: "8px",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center"
+        }}>
+          <div style={{ fontSize: "12px", color: "#666", marginBottom: "8px" }}>Days Since Last Contact</div>
           <div style={{ 
-            backgroundColor: "#f5f5f5", 
-            padding: "16px", 
-            borderRadius: "8px",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center"
+            fontSize: "28px", 
+            fontWeight: "bold",
+            marginBottom: "4px"
           }}>
-            <div style={{ fontSize: "12px", color: "#666", marginBottom: "8px" }}>Open</div>
-            <div style={{ 
-              fontSize: "28px", 
-              fontWeight: "bold",
-              marginBottom: "4px"
-            }}>
-              {calculateDaysSinceLastContact(activities)?.days || 0}
-            </div>
-            <div style={{ fontSize: "12px", color: "#666" }}>days</div>
-            <div style={{ fontSize: "12px", color: "#666", marginTop: "4px" }}>
-              {calculateDaysSinceLastContact(activities)?.days > 30 ? 
-                "30 avg" : "35 avg"}
-            </div>
+            {calculateDaysSinceLastContact(activities)?.days || 0}
           </div>
-          
-          {/* Other analytics tiles can be added here */}
-          <div style={{ 
-            backgroundColor: "#f5f5f5", 
-            padding: "16px", 
-            borderRadius: "8px" 
-          }}>
-            {/* Placeholder for another metric */}
-          </div>
-          
-          <div style={{ 
-            backgroundColor: "#f5f5f5", 
-            padding: "16px", 
-            borderRadius: "8px" 
-          }}>
-            {/* Placeholder for another metric */}
-          </div>
-          
-          <div style={{ 
-            backgroundColor: "#f5f5f5", 
-            padding: "16px", 
-            borderRadius: "8px" 
-          }}>
-            {/* Placeholder for another metric */}
+          <div style={{ fontSize: "12px", color: "#666" }}>days</div>
+          <div style={{ fontSize: "12px", color: "#666", marginTop: "4px" }}>
+            {calculateDaysSinceLastContact(activities)?.days > 30 ? 
+              "30 avg" : "35 avg"}
           </div>
         </div>
-      ) : (
-        <p>No activities to analyze.</p>
-      )}
+        
+        {/* Average Closing Time */}
+        <div style={{ 
+          padding: "16px", 
+          borderRadius: "8px",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center"
+        }}>
+          <div style={{ fontSize: "12px", color: "#666", marginBottom: "8px" }}>Avg. Closing Time</div>
+          <div style={{ 
+            fontSize: "28px", 
+            fontWeight: "bold",
+            marginBottom: "4px"
+          }}>
+            {averageClosingTime || 0}
+          </div>
+          <div style={{ fontSize: "12px", color: "#666" }}>days</div>
+        </div>
+      </div>
+      
+      {/* Closing Time Chart */}
+      <div style={{ 
+        padding: "16px", 
+        borderRadius: "8px",
+        marginBottom: "16px"
+      }}>
+        <div style={{ fontSize: "14px", color: "#333", marginBottom: "16px" }}>
+          Closing Time - Last 7 Closed Opportunities
+        </div>
+        
+        <div style={{ height: 200, position: 'relative' }}>
+          <Bar 
+            ref={chartRef}
+            data={chartData} 
+            options={options} 
+            plugins={[averageLinePlugin]}
+            onClick={handleBarClick}
+          />
+        </div>
+        
+        {/* Average indicator */}
+        <div style={{ 
+          display: "flex",
+          alignItems: "center",
+          marginTop: "16px",
+          paddingTop: "8px",
+          borderTop: "1px solid #e0e0e0"
+        }}>
+          <div style={{ 
+            width: "16px", 
+            height: "2px", 
+            backgroundColor: "#c4e456",
+            marginRight: "6px"
+          }}></div>
+          <div style={{ fontSize: "12px", color: "#666" }}>
+            Average: {averageClosingTime} days
+          </div>
+        </div>
+      </div>
     </AccordionSection>
   );
 };

@@ -142,6 +142,21 @@ export const fetchOpportunitiesWithActivities = async (token, userId) => {
   return opportunitiesWithActivities;
 };
 
+// Get all closed user ID opportunities
+const OpportunitiesCurrentUserURL = `${BASE_URL}/opportunities?$filter=statecode ne 0 and _ownerid_value eq ${currentUserId}&$select=statecode,totalamount,actualclosedate,totaldiscountamount,exchangerate,createdon`;
+
+const response = await fetch(url, {
+  headers: getDefaultHeaders(token),
+});
+
+if (!response.ok) {
+  throw new Error(`Failed to fetch data: ${response.status}`);
+}
+
+  const data = await response.json();
+  const opportunities = data.value || [];
+  console.log(`Received ${opportunities.length} All user closed opportunities`);
+
 /**
  * Get current opportunity ID either from storage or from the active tab
  * @returns {Promise<string|null>} Opportunity ID or null if not found

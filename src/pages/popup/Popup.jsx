@@ -215,15 +215,19 @@ const Popup = () => {
    */
   const handleFetchClosedOpportunities = async (token) => {
     try {
+      console.log("BEFORE: Fetching closed opportunities...");
       await fetchClosedOpportunities(
         token,
         setLoading,
         setError,
         setClosedOpportunities
       );
+      // Need to use setTimeout because state updates are asynchronous
+      setTimeout(() => {
+        console.log("AFTER: Closed opportunities fetched:", closedOpportunities.length);
+      }, 100);
     } catch (error) {
       console.error("Error fetching closed opportunities:", error);
-      setError(`Failed to fetch closed opportunities: ${error.message}`);
     }
   };
 
@@ -548,6 +552,7 @@ const Popup = () => {
           onLogout={handleLogout}
           onOpportunitySelect={handleOpportunitySelect}
           isLoggingOut={isLoggingOut}
+          closedOpportunities={closedOpportunities}
           toggleAutoOpen={toggleAutoOpen}
           autoOpen={autoOpen}
           onFetchMyOpenOpportunities={handleFetchMyOpenOpportunities}

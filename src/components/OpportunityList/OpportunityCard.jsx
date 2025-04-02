@@ -136,12 +136,12 @@ const OpportunityCard = ({ opportunity, onClick }) => {
       onMouseEnter={(e) => {
         e.currentTarget.style.transform = "translateY(-2px)";
         e.currentTarget.style.boxShadow = "0 4px 6px rgba(0,0,0,0.1)";
-        e.currentTarget.style.borderLeft = "4px solid #d4ff58";
+        e.currentTarget.style.borderLeft = "2px solid #d4ff58";
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.transform = "translateY(0)";
         e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.08)";
-        e.currentTarget.style.borderLeft = `4px solid #9e9e9e`;
+        e.currentTarget.style.borderLeft = `2px solid #9e9e9e`;
       }}
       onClick={onClick}
     >

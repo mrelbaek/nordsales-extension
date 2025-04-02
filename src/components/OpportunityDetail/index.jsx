@@ -46,7 +46,7 @@ const OpportunityDetail = ({
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", width: "100%", overflow: "auto" }}>
       <Header
-        title="Nordsales"
+        title="Nord Lens"
         showBackButton={true}
         onBackClick={onBackClick}
         onLogout={onLogout}

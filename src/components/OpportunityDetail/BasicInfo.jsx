@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import AccordionSection from '../common/AccordionSection';
+import { getOpportunityUrl } from '../../utils/opportunityUtils';
 
 /**
  * Basic opportunity information component
@@ -11,6 +12,25 @@ import AccordionSection from '../common/AccordionSection';
  * @returns {JSX.Element} Basic info component
  */
 const BasicInfo = ({ opportunity, isOpen, onToggle }) => {
+  const [dynamicsUrl, setDynamicsUrl] = useState('');
+  
+  // Generate Dynamics URL when opportunity changes
+  useEffect(() => {
+    async function loadDynamicsUrl() {
+      if (opportunity && opportunity.opportunityid) {
+        try {
+          const url = await getOpportunityUrl(opportunity.opportunityid);
+          setDynamicsUrl(url);
+        } catch (error) {
+          console.error("Error generating Dynamics URL:", error);
+          setDynamicsUrl('');
+        }
+      }
+    }
+    
+    loadDynamicsUrl();
+  }, [opportunity]);
+  
   return (
     <AccordionSection
     title="Basic Info"
@@ -61,14 +81,20 @@ const BasicInfo = ({ opportunity, isOpen, onToggle }) => {
       )}
       
       <div style={{ marginTop: "16px" }}>
-        <a 
-          href={`https://orga6a657bc.crm.dynamics.com/main.aspx?appid=e82f31a2-d4e4-ef11-9341-6045bd0438e7&pagetype=entityrecord&etn=opportunity&id=${opportunity.opportunityid}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{ color: "#0078d4", textDecoration: "none" }}
-        >
-          Open in Dynamics →
-        </a>
+        {dynamicsUrl ? (
+          <a 
+            href={dynamicsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: "#0078d4", textDecoration: "none" }}
+          >
+            Open in Dynamics →
+          </a>
+        ) : (
+          <span style={{ color: "#999", fontSize: "14px" }}>
+            Dynamics URL not available
+          </span>
+        )}
       </div>
     </div>
     </AccordionSection>

@@ -2,35 +2,237 @@
  * Utility functions for working with Dynamics CRM Opportunities
  */
 
-// Constants for API URLs
-const BASE_URL = "https://orga6a657bc.crm.dynamics.com/api/data/v9.2";
+// Dynamic BASE_URL - will be set after determining organization ID
+let BASE_URL = null;
+
+
+// Token debug helper
+const debugToken = (token) => {
+  if (!token) return "Token is null or undefined";
+  
+  const hasBearer = token.startsWith('Bearer ');
+  const tokenLength = token.length;
+  const tokenStart = token.substring(0, Math.min(30, tokenLength));
+  
+  return {
+    format: hasBearer ? "Has 'Bearer' prefix" : "Missing 'Bearer' prefix",
+    length: tokenLength,
+    preview: tokenStart + "...",
+    isJWT: token.includes('.') && token.split('.').length === 3
+  };
+};
+
 
 /**
- * Fetch current user information
+ * Extract organization ID from Dynamics CRM URL
+ * @param {string} url - Dynamics CRM URL
+ * @returns {string|null} Organization ID or null if not found
+ */
+export const extractOrgIdFromUrl = (url) => {
+  if (!url) return null;
+  
+  // Pattern for org ID in CRM URLs (e.g., https://orgXXXXXXX.crm.dynamics.com)
+  const orgPattern = /https:\/\/([^.]+)\.crm\.dynamics\.com/;
+  const matches = url.match(orgPattern);
+  
+  if (matches && matches[1]) {
+    return matches[1];
+  }
+  console.warn("Could not extract organization ID from URL:", url);
+  return null;
+};
+
+
+
+/**
+ * Get the current organization ID from storage or active tab
+ * @returns {Promise<string|null>} Organization ID or null if not found
+ */
+export const getCurrentOrgId = async () => {
+  try {
+    // First check storage for any existing org ID
+    const { currentOrgId, organizationId } = await chrome.storage.local.get(['currentOrgId', 'organizationId']);
+    
+    // Use whichever is available
+    if (currentOrgId || organizationId) {
+      const usedOrgId = currentOrgId || organizationId;
+      console.log("[OppUtil] Found organization ID in storage:", usedOrgId);
+      return usedOrgId;
+    }
+    
+    // If not in storage, try to get it from the active tab
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    const activeTab = tabs[0];
+    
+    if (activeTab?.url && activeTab.url.includes('crm.dynamics.com')) {
+      try {
+        const response = await new Promise((resolve, reject) => {
+          try {
+            chrome.tabs.sendMessage(
+              activeTab.id, 
+              { type: "GET_ORGANIZATION_ID" },
+              (response) => {
+                // Use runtime.lastError to check for errors
+                if (chrome.runtime.lastError) {
+                  console.warn("Error sending message:", chrome.runtime.lastError);
+                  reject(chrome.runtime.lastError);
+                  return;
+                }
+                
+                resolve(response);
+              }
+            );
+          } catch (err) {
+            reject(err);
+          }
+        });
+        
+        if (response?.organizationId) {
+          // Store for later use
+          chrome.storage.local.set({ 
+            currentOrgId: response.organizationId,
+            organizationId: response.organizationId,
+            lastOrgIdUpdated: Date.now() 
+          });
+          
+          return response.organizationId;
+        }
+      } catch (error) {
+        console.warn("Could not communicate with content script:", error);
+        
+        // Try to extract from URL directly as fallback
+        if (activeTab.url) {
+          const match = activeTab.url.match(/https:\/\/([^.]+)\.crm\.dynamics\.com/i);
+          if (match && match[1]) {
+            const extractedOrgId = match[1];
+            
+            // Store the ID
+            chrome.storage.local.set({ 
+              currentOrgId: extractedOrgId,
+              organizationId: extractedOrgId,
+              lastOrgIdUpdated: Date.now()
+            });
+            
+            return extractedOrgId;
+          }
+        }
+      }
+    }
+    
+    return null;
+  } catch (err) {
+    console.error("Error getting organization ID:", err);
+    return null;
+  }
+};
+
+/**
+ * Get the base URL for Dynamics CRM API calls
+ * @returns {Promise<string|null>} Base URL for API calls or null if org ID not found
+ */
+export const getDynamicsBaseUrl = async () => {
+  // Return cached value if available
+  if (BASE_URL) return BASE_URL;
+  
+  const orgId = await getCurrentOrgId();
+  
+  if (!orgId) {
+    console.error("Cannot create base URL: No organization ID available");
+    return null;
+  }
+  
+  BASE_URL = `https://${orgId}.crm.dynamics.com/api/data/v9.2`;
+  return BASE_URL;
+};
+
+
+/**
+ * Fetch current user information with customized response handling
  * @param {string} token - Access token for Dynamics CRM
  * @returns {Promise<string|null>} User ID if found, null otherwise 
  */
+
+
 export const getCurrentUserId = async (token) => {
   try {
-    const response = await fetch(`${BASE_URL}/WhoAmI`, {
+    
+    const baseUrl = await getDynamicsBaseUrl();
+    
+    if (!baseUrl) {
+      console.error("[OppUtil][getCurrentUserId] Cannot determine API base URL - organization ID not found");
+      return null;
+    }
+
+    // Ensure token has the right format (contains 'Bearer' only once)
+    let formattedToken = token;
+    if (!token.startsWith('Bearer ')) {
+      formattedToken = `Bearer ${token}`;
+    }
+
+    console.log(`[OppUtil][getCurrentUserId] Fetching current user with WhoAmI endpoint: ${baseUrl}/WhoAmI`);
+    console.log(`[OppUtil][getCurrentUserId] Using token format: ${formattedToken.substring(0, 20)}...`);
+    console.log("[OppUtil][getCurrentUserId] Token debug info:", debugToken(token));
+
+    const response = await fetch(`${baseUrl}/WhoAmI`, {
+      method: 'GET',
       headers: {
-        "Authorization": `Bearer ${token}`,
+        "Authorization": `${token}`,
         "Accept": "application/json",
         "OData-MaxVersion": "4.0",
-        "OData-Version": "4.0"
+        "OData-Version": "4.0",
+        "Content-Type": "application/json"
       }
     });
     
+    // Log full response status for debugging
+    console.log(`[OppUtil][getCurrentUserId] WhoAmI URL used: ${baseUrl}/WhoAmI`);
+    console.log(`[OppUtil][getCurrentUserId] WhoAmI response status: ${response.status} token: ${token}`);
+    console.log("[OppUtil][getCurrentUserId] Token at WhoAmI call:", token?.substring(0, 30));
+
     if (!response.ok) {
-      console.error(`Failed to fetch current user: ${response.status}`);
+      const errorText = await response.text();
+      console.error(`[OppUtil][getCurrentUserId] Failed to fetch current user: ${response.status} - ${errorText}`);
+      
+      // If authentication failed, throw a specific error
+      if (response.status === 401) {
+        throw new Error("[OppUtil][getCurrentUserId] Authentication failed. Please log in again.");
+      }
+      
       return null;
     }
     
     const data = await response.json();
-    return data.UserId || null;
+    
+    // Log the full response for debugging
+    console.log("[OppUtil][getCurrentUserId] WhoAmI response data:", JSON.stringify(data, null, 2));
+    
+    // Check for UserId in WhoAmIResponse format
+    if (data.UserId) {
+      console.log(`[OppUtil][getCurrentUserId] Found UserId: ${data.UserId}`);
+      return data.UserId;
+    }
+    
+    // Some Dynamics environments might wrap the response
+    if (data.value && data.value.UserId) {
+      console.log(`[OppUtil][getCurrentUserId] Found UserId in value property: ${data.value.UserId}`);
+      return data.value.UserId;
+    }
+    
+    // Try other common property names
+    const possibleUserIdProperties = ['userId', 'userid', 'user_id', 'id'];
+    for (const prop of possibleUserIdProperties) {
+      if (data[prop]) {
+        console.log(`[OppUtil][getCurrentUserId] Found user ID in property ${prop}: ${data[prop]}`);
+        return data[prop];
+      }
+    }
+    
+    // If no user ID found, log the complete response and throw error
+    console.error(`[OppUtil][getCurrentUserId] No user ID found in response: ${JSON.stringify(data)}`);
+    throw new Error(`[OppUtil][getCurrentUserId] User ID not found in response. Please check the Dynamics CRM configuration.`);
   } catch (error) {
-    console.error("Error fetching current user:", error);
-    return null;
+    console.error("[OppUtil][getCurrentUserId] Error fetching current user:", error);
+    throw new Error(`[OppUtil][getCurrentUserId] Error fetching current user: ${error.message}`);
   }
 };
 
@@ -44,7 +246,7 @@ export const getCurrentOpportunityId = async () => {
     const storedData = await chrome.storage.local.get(['currentOpportunityId']);
     
     if (storedData.currentOpportunityId) {
-      console.log("Found opportunity ID in storage:", storedData.currentOpportunityId);
+      console.log("[OppUtil] Found opportunity ID in storage:", storedData.currentOpportunityId);
       return storedData.currentOpportunityId;
     }
     
@@ -66,7 +268,7 @@ export const getCurrentOpportunityId = async () => {
                 return;
               }
 
-              console.log("Content script response:", response);
+              console.log("[OppUtil] Content script response:", response);
               resolve(response?.opportunityId || null);
             }
           );
@@ -91,21 +293,28 @@ export const getCurrentOpportunityId = async () => {
  * @returns {Promise<Array>} Array of activity objects
  */
 export const fetchActivitiesForOpportunity = async (token, opportunityId) => {
-  console.log(`Attempting to fetch activities for opportunity: ${opportunityId}`);
-  const activitiesUrl = `${BASE_URL}/activitypointers?$filter=_regardingobjectid_value eq '${opportunityId}'&$select=activityid,subject,activitytypecode,actualstart,actualend,createdon,scheduledstart`;
-  console.log("📡 FETCHING ACTIVITIES FROM:", activitiesUrl);
+  console.log(`[OppUtil] Attempting to fetch activities for opportunity: ${opportunityId}`);
+  
+  const baseUrl = await getDynamicsBaseUrl();
+  if (!baseUrl) {
+    console.error("Cannot fetch activities: Organization ID not found");
+    return [];
+  }
+  
+  const activitiesUrl = `${baseUrl}/activitypointers?$filter=_regardingobjectid_value eq '${opportunityId}'&$select=activityid,subject,activitytypecode,actualstart,actualend,createdon,scheduledstart`;
+  console.log("[OppUtil] FETCHING ACTIVITIES FROM:", activitiesUrl);
 
   try {
     const response = await fetch(activitiesUrl, {
       headers: {
-        "Authorization": `Bearer ${token}`,
+        "Authorization": `${token}`,
         "Accept": "application/json",
         "OData-MaxVersion": "4.0",
         "OData-Version": "4.0"
       }
     });
 
-    console.log(`Activities API response status: ${response.status}`);
+    console.log(`[OppUtil] Activities API response status: ${response.status}`);
     
     // Handle authentication error
     if (response.status === 401) {
@@ -119,7 +328,7 @@ export const fetchActivitiesForOpportunity = async (token, opportunityId) => {
     }
 
     const data = await response.json();
-    console.log(`Received ${data.value?.length || 0} activities`);
+    console.log(`[OppUtil] Received ${data.value?.length || 0} activities`);
     return data.value || [];
   } catch (error) {
     console.error("Error fetching activities:", error);
@@ -151,15 +360,21 @@ export const fetchOpportunityDetails = async (
     setLoading(true);
     setError(null);
     
-    console.log(`Attempting to fetch opportunity details for ID: ${oppId}`);
+    console.log(`[OppUtil][fetchOpportunityDetails] Attempting to fetch opportunity details for ID: ${oppId}`);
+    
+    // Get base URL
+    const baseUrl = await getDynamicsBaseUrl();
+    if (!baseUrl) {
+      throw new Error("Cannot fetch opportunity details: Organization ID not found. Please navigate to Dynamics CRM first.");
+    }
     
     // Try with different formats of the opportunity ID
     // Dynamics CRM can be picky about how IDs are formatted in the URL
     const formats = [
-      `${BASE_URL}/opportunities(${oppId})`,
-      `${BASE_URL}/opportunities(guid'${oppId}')`,
-      `${BASE_URL}/opportunities?$filter=opportunityid eq ${oppId}`,
-      `${BASE_URL}/opportunities?$filter=opportunityid eq guid'${oppId}'`
+      `${baseUrl}/opportunities(${oppId})`, // Make sure parenthesis is properly closed
+      `${baseUrl}/opportunities(guid'${oppId}')`, // Make sure both parenthesis and quote are closed
+      `${baseUrl}/opportunities?$filter=opportunityid eq ${oppId}`,
+      `${baseUrl}/opportunities?$filter=opportunityid eq guid'${oppId}'`
     ];
     
     let lastError = null;
@@ -168,12 +383,12 @@ export const fetchOpportunityDetails = async (
     
     // Try each format until one works
     for (const url of formats) {
-      console.log(`Trying URL format: ${url}`);
+      console.log(`[OppUtil][fetchOpportunityDetails] Trying URL format: ${url}`);
       
       try {
         const response = await fetch(url, {
           headers: { 
-            "Authorization": `Bearer ${token}`,
+            "Authorization": `${token}`,
             "Accept": "application/json",
             "OData-MaxVersion": "4.0",
             "OData-Version": "4.0",
@@ -181,7 +396,7 @@ export const fetchOpportunityDetails = async (
           },
         });
         
-        console.log(`Response status for ${url}: ${response.status}`);
+        console.log(`[OppUtil][fetchOpportunityDetails] Response status for ${url}: ${response.status}`);
         
         // Check for authentication error
         if (response.status === 401) {
@@ -206,7 +421,7 @@ export const fetchOpportunityDetails = async (
           text: await response.text()
         };
       } catch (err) {
-        console.log(`Error with format ${url}: ${err.message}`);
+        console.log(`[OppUtil][fetchOpportunityDetails] Error with format ${url}: ${err.message}`);
         lastError = {
           message: err.message,
           url: url
@@ -216,16 +431,16 @@ export const fetchOpportunityDetails = async (
     
     // Handle authentication failure
     if (authFailed) {
-      throw new Error("Authentication failed. Please log in again.");
+      throw new Error("[OppUtil][fetchOpportunityDetails] Authentication failed. Please log in again.");
     }
     
     if (!successResponse) {
-      console.error("All URL formats failed:", lastError);
-      throw new Error(`Failed to fetch opportunity details: ${lastError.status || 'API Error'}`);
+      console.error("[OppUtil][fetchOpportunityDetails] All URL formats failed:", lastError);
+      throw new Error(`[OppUtil][fetchOpportunityDetails] Failed to fetch opportunity details: ${lastError.status || 'API Error'}`);
     }
     
     const data = await successResponse.json();
-    console.log('Opportunity data received:', data);
+    console.log('[OppUtil][fetchOpportunityDetails] Opportunity data received:', data);
     
     // If the response is a collection, take the first item
     if (data.value && Array.isArray(data.value) && data.value.length > 0) {
@@ -237,12 +452,12 @@ export const fetchOpportunityDetails = async (
     // Fetch activities for this opportunity
     const activityData = await fetchActivitiesForOpportunity(token, oppId);
     setActivities(activityData);
-    console.log('🐛 Activities data received:', activityData);
+    console.log('[OppUtil][fetchOpportunityDetails] Activities data received:', activityData);
 
     
   } catch (error) {
-    console.error("Error fetching opportunity details:", error);
-    setError(`Failed to fetch opportunity details: ${error.message}`);
+    console.error("[OppUtil][fetchOpportunityDetails] Error fetching opportunity details:", error);
+    setError(`[OppUtil][fetchOpportunityDetails] Failed to fetch opportunity details: ${error.message}`);
   } finally {
     setLoading(false);
   }
@@ -268,32 +483,39 @@ export const fetchOpportunitiesWithActivities = async (
     setLoading(true);
     setError(null);
     
+    // Get base URL
+    const baseUrl = await getDynamicsBaseUrl();
+    if (!baseUrl) {
+      throw new Error("[OppUtil][fetchOpportunitiesWithActivities] Cannot fetch opportunities: Organization ID not found. Please navigate to Dynamics CRM first.");
+    }
+    
     // Get current user ID first
     const currentUserId = await getCurrentUserId(token);
     
     if (!currentUserId) {
-      throw new Error("Could not determine current user ID");
+      throw new Error("[OppUtil][fetchOpportunitiesWithActivities] Could not determine current user ID");
     }
     
     // Build the URL to fetch open opportunities for current user
-    const url = `${BASE_URL}/opportunities?$filter=statecode eq 0 and _ownerid_value eq ${currentUserId}&$select=name,opportunityid,_customerid_value,createdon,statecode,estimatedvalue,estimatedclosedate,actualclosedate&$expand=customerid_account($select=name)`;
+    const url = `${baseUrl}/opportunities?$filter=statecode eq 0 and _ownerid_value eq ${currentUserId}&$select=name,opportunityid,_customerid_value,createdon,statecode,estimatedvalue,estimatedclosedate,actualclosedate&$expand=customerid_account($select=name)`;
     
-    console.log("Fetching opportunities list...");
+    console.log(`✅ [OppUtil][fetchOpportunitiesWithActivities] Fetching opportunities list from ${url}`);
     
     const response = await fetch(url, {
       headers: { 
-        "Authorization": `Bearer ${token}`,
+        "Authorization": `${token}`,
         "Accept": "application/json",
         "OData-MaxVersion": "4.0",
         "OData-Version": "4.0"
       },
     });
 
-    console.log(`Response status: ${response.status}`);
+    console.log(`[OppUtil][fetchOpportunitiesWithActivities] Response status: ${response.status}`);
+    console.log(`[OppUtil][fetchOpportunitiesWithActivities] Token used: ${token}`);
     
     if (response.status === 401) {
-      console.warn("Authentication token expired or invalid");
-      throw new Error("Authentication failed. Please log in again.");
+      console.warn("[OppUtil][fetchOpportunitiesWithActivities] Status 401: Authentication token expired or invalid.");
+      throw new Error("[OppUtil][fetchOpportunitiesWithActivities] Status 401: Authentication failed. Please log in again.");
     }
     
     if (!response.ok) {
@@ -305,12 +527,12 @@ export const fetchOpportunitiesWithActivities = async (
         errorText = await response.text();
       }
       
-      console.error(`API Error: ${response.status}`, errorText);
-      throw new Error(`Failed to fetch data: ${response.status} - ${errorText}`);
+      console.error(`[OppUtil][fetchOpportunitiesWithActivities] API Error: ${response.status}`, errorText);
+      throw new Error(`[OppUtil][fetchOpportunitiesWithActivities] Failed to fetch data: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();
-    console.log(`Received ${data.value?.length || 0} opportunities`);
+    console.log(`[OppUtil][fetchOpportunitiesWithActivities] Received ${data.value?.length || 0} opportunities`);
     
     // Fetch activities for each opportunity
     const opportunitiesWithActivities = await Promise.all(
@@ -319,7 +541,7 @@ export const fetchOpportunitiesWithActivities = async (
           // Ensure opportunity object always has an activities array
           const opportunityId = opportunity.opportunityid;
           if (!opportunityId) {
-            console.warn(`Skipping opportunity at index ${index} without ID`, opportunity);
+            console.warn(`[OppUtil][fetchOpportunitiesWithActivities] Skipping opportunity at index ${index} without ID`, opportunity);
             return { 
               ...opportunity, 
               opportunities_list_index: index, // Use a more explicit name
@@ -329,12 +551,12 @@ export const fetchOpportunitiesWithActivities = async (
           }
           
           // Fetch activities for this opportunity
-          // NOTE: Fixed reference to activities by capturing the result of the API call
-          const activitiesUrl = `${BASE_URL}/activitypointers?$filter=_regardingobjectid_value eq ${opportunityId}&$select=activityid,subject,activitytypecode,scheduledstart,actualstart,createdon&$orderby=createdon desc`;
+          const baseUrl = await getDynamicsBaseUrl();
+          const activitiesUrl = `${baseUrl}/activitypointers?$filter=_regardingobjectid_value eq ${opportunityId}&$select=activityid,subject,activitytypecode,scheduledstart,actualstart,createdon&$orderby=createdon desc`;
           
           const activitiesResponse = await fetch(activitiesUrl, {
             headers: { 
-              "Authorization": `Bearer ${token}`,
+              "Authorization": `${token}`,
               "Accept": "application/json",
               "OData-MaxVersion": "4.0",
               "OData-Version": "4.0"
@@ -356,7 +578,7 @@ export const fetchOpportunitiesWithActivities = async (
               : null
           };
         } catch (error) {
-          console.error(`Error processing opportunity at index ${index}:`, error);
+          console.error(`[OppUtil][fetchOpportunitiesWithActivities] Error processing opportunity at index ${index}:`, error);
           return {
             ...opportunity,
             opportunities_list_index: index,
@@ -371,11 +593,11 @@ export const fetchOpportunitiesWithActivities = async (
     setOpportunities(opportunitiesWithActivities);
 
   } catch (error) {
-    console.error("Error fetching opportunities:", error);
-    setError(`Failed to fetch opportunities list: ${error.message}`);
+    console.error("[OppUtil][fetchOpportunitiesWithActivities] Error fetching opportunities:", error);
+    setError(`[OppUtil][fetchOpportunitiesWithActivities] Failed to fetch opportunities list: ${error.message}`);
     if (setDebugInfo) {
       setDebugInfo({
-        errorType: "Opportunities List Error",
+        errorType: "[OppUtil][fetchOpportunitiesWithActivities] Opportunities List Error",
         message: error.message,
         timestamp: new Date().toISOString()
       });
@@ -403,21 +625,27 @@ export const fetchMyOpenOpportunities = async (
     setLoading(true);
     setError(null);
     
+    // Get base URL
+    const baseUrl = await getDynamicsBaseUrl();
+    if (!baseUrl) {
+      throw new Error("[OppUtil][fetchMyOpenOpportunities] Cannot fetch opportunities: Organization ID not found. Please navigate to Dynamics CRM first.");
+    }
+    
     // First get the current user ID
     const currentUserId = await getCurrentUserId(token);
     
     if (!currentUserId) {
-      throw new Error("Could not determine current user ID");
+      throw new Error("[OppUtil][fetchMyOpenOpportunities] Could not determine current user ID");
     }
     
-    console.log("Fetching opportunities for user ID:", currentUserId);
+    console.log("[OppUtil][fetchMyOpenOpportunities] Fetching opportunities for user ID:", currentUserId);
     
     // Build the URL to fetch open opportunities for current user
-    const url = `${BASE_URL}/opportunities?$filter=statecode eq 0 and _ownerid_value eq ${currentUserId}&$select=name,opportunityid,_customerid_value,createdon,statecode,estimatedvalue,estimatedclosedate,actualclosedate&$expand=customerid_account($select=name)`;
+    const url = `${baseUrl}/opportunities?$filter=statecode eq 0 and _ownerid_value eq ${currentUserId}&$select=name,opportunityid,_customerid_value,createdon,statecode,estimatedvalue,estimatedclosedate,actualclosedate&$expand=customerid_account($select=name)`;
     
     const response = await fetch(url, {
       headers: {
-        "Authorization": `Bearer ${token}`,
+        "Authorization": `${token}`,
         "Accept": "application/json",
         "OData-MaxVersion": "4.0",
         "OData-Version": "4.0"
@@ -425,8 +653,8 @@ export const fetchMyOpenOpportunities = async (
     });
     
     if (response.status === 401) {
-      console.warn("Authentication token expired or invalid");
-      throw new Error("Authentication failed. Please log in again.");
+      console.warn("[OppUtil][fetchMyOpenOpportunities] Authentication token expired or invalid");
+      throw new Error("[OppUtil][fetchMyOpenOpportunities] Authentication failed. Please log in again.");
     }
     
     if (!response.ok) {
@@ -438,21 +666,126 @@ export const fetchMyOpenOpportunities = async (
         errorText = await response.text();
       }
       
-      console.error(`API Error: ${response.status}`, errorText);
-      throw new Error(`Failed to fetch opportunities: ${response.status} - ${errorText}`);
+      console.error(`[OppUtil][fetchMyOpenOpportunities] API Error: ${response.status}`, errorText);
+      throw new Error(`[OppUtil][fetchMyOpenOpportunities] Failed to fetch opportunities: ${response.status} - ${errorText}`);
     }
     
     const data = await response.json();
-    console.log(`Received ${data.value?.length || 0} open opportunities`);
+    console.log(`[OppUtil] Received ${data.value?.length || 0} open opportunities`);
     
     // Set opportunities in state
     setOpportunities(data.value || []);
   } catch (error) {
-    console.error("Error fetching opportunities:", error);
-    setError(`Failed to fetch opportunities list: ${error.message}`);
+    console.error("[OppUtil][fetchMyOpenOpportunities] Error fetching opportunities:", error);
+    setError(`[OppUtil][fetchMyOpenOpportunities] Failed to fetch opportunities list: ${error.message}`);
   } finally {
     setLoading(false);
   }
+};
+
+/**
+ * Fetch closed opportunities for the current user
+ * @param {string} token - Access token for Dynamics CRM
+ * @param {Function} setLoading - State setter for loading indicator
+ * @param {Function} setError - State setter for error message
+ * @param {Function} setClosedOpportunities - State setter for closed opportunities data
+ * @returns {Promise<void>}
+ */
+export const fetchClosedOpportunities = async (
+  token,
+  setLoading,
+  setError,
+  setClosedOpportunities
+) => {
+  try {
+    if (setLoading) setLoading(true);
+    if (setError) setError(null);
+    
+    // Get base URL
+    const baseUrl = await getDynamicsBaseUrl();
+
+    if (!baseUrl) {
+      throw new Error("[OppUtil][fetchClosedOpportunities] Cannot fetch closed opportunities: Organization ID not found. Please navigate to Dynamics CRM first.");
+    }
+    
+    // Get current user ID first
+    const currentUserId = await getCurrentUserId(token);
+    
+    if (!currentUserId) {
+      throw new Error("[OppUtil][fetchClosedOpportunities] Could not determine current user ID");
+    }
+    
+    // Build the URL to fetch closed opportunities for current user
+    const url = `${baseUrl}/opportunities?$filter=statecode ne 0 and _ownerid_value eq ${currentUserId}&$select=name,statecode,opportunityid,totalamount,actualclosedate,totaldiscountamount,exchangerate,createdon&$orderby=actualclosedate desc`;
+    
+    console.log("[OppUtil][fetchClosedOpportunities] Fetching closed opportunities...");
+    console.log("[OppUtil][fetchClosedOpportunities] closed opportunity URL:", url);
+    
+    const response = await fetch(url, {
+      headers: {
+        "Authorization": `${token}`,
+        "Accept": "application/json",
+        "OData-MaxVersion": "4.0",
+        "OData-Version": "4.0"
+      },
+    });
+    
+    if (response.status === 401) {
+      console.warn("[OppUtil][fetchClosedOpportunities] Authentication token expired or invalid");
+      throw new Error("[OppUtil][fetchClosedOpportunities] Authentication failed. Please log in again.");
+    }
+    
+    if (!response.ok) {
+      let errorText = '';
+      try {
+        const errorData = await response.json();
+        errorText = JSON.stringify(errorData);
+      } catch (e) {
+        errorText = await response.text();
+      }
+      
+      console.error(`[OppUtil][fetchClosedOpportunities] API Error: ${response.status}`, errorText);
+      throw new Error(`[OppUtil][fetchClosedOpportunities] Failed to fetch closed opportunities: ${response.status} - ${errorText}`);
+    }
+    
+    const data = await response.json();
+    console.log(`[OppUtil][fetchClosedOpportunities] Received ${data.value?.length || 0} closed opportunities`);
+    
+    // Filter out opportunities without closing date
+    const validOpportunities = (data.value || []).filter(opp => 
+      opp.actualclosedate && opp.createdon
+    );
+    
+    // Set opportunities in state
+    if (setClosedOpportunities) {
+      setClosedOpportunities(validOpportunities);
+    }
+    
+    return validOpportunities;
+  } catch (error) {
+    console.error("[OppUtil][fetchClosedOpportunities] Error fetching closed opportunities:", error);
+    if (setError) setError(`[OppUtil][fetchClosedOpportunities] Failed to fetch closed opportunities: ${error.message}`);
+    return [];
+  } finally {
+    if (setLoading) setLoading(false);
+  }
+};
+
+/**
+ * Generate a URL to view the opportunity in Dynamics CRM
+ * @param {string} opportunityId - ID of the opportunity
+ * @returns {Promise<string>} URL to view the opportunity
+ */
+export const getOpportunityUrl = async (opportunityId) => {
+  if (!opportunityId) return '';
+  
+  const orgId = await getCurrentOrgId();
+  if (!orgId) {
+    console.error("[OppUtil][fetchClosedOpportunities] Cannot generate opportunity URL: Organization ID not found");
+    return '';
+  }
+  
+  return `https://${orgId}.crm.dynamics.com/main.aspx?appid=e82f31a2-d4e4-ef11-9341-6045bd0438e7&pagetype=entityrecord&etn=opportunity&id=${opportunityId}`;
 };
 
 /**
@@ -480,86 +813,6 @@ export const formatOpportunityData = (opportunity) => {
 };
 
 /**
- * Fetch closed opportunities for the current user
- * @param {string} token - Access token for Dynamics CRM
- * @param {Function} setLoading - State setter for loading indicator
- * @param {Function} setError - State setter for error message
- * @param {Function} setClosedOpportunities - State setter for closed opportunities data
- * @returns {Promise<void>}
- */
-export const fetchClosedOpportunities = async (
-  token,
-  setLoading,
-  setError,
-  setClosedOpportunities
-) => {
-  try {
-    if (setLoading) setLoading(true);
-    if (setError) setError(null);
-    
-    // Get current user ID first
-    const currentUserId = await getCurrentUserId(token);
-    
-    if (!currentUserId) {
-      throw new Error("Could not determine current user ID");
-    }
-    
-    // Build the URL to fetch closed opportunities for current user
-    const url = `${BASE_URL}/opportunities?$filter=statecode ne 0 and _ownerid_value eq ${currentUserId}&$select=name,statecode,opportunityid,totalamount,actualclosedate,totaldiscountamount,exchangerate,createdon&$orderby=actualclosedate desc`;
-    
-    console.log("Fetching closed opportunities...");
-    
-    const response = await fetch(url, {
-      headers: {
-        "Authorization": `Bearer ${token}`,
-        "Accept": "application/json",
-        "OData-MaxVersion": "4.0",
-        "OData-Version": "4.0"
-      },
-    });
-    
-    if (response.status === 401) {
-      console.warn("Authentication token expired or invalid");
-      throw new Error("Authentication failed. Please log in again.");
-    }
-    
-    if (!response.ok) {
-      let errorText = '';
-      try {
-        const errorData = await response.json();
-        errorText = JSON.stringify(errorData);
-      } catch (e) {
-        errorText = await response.text();
-      }
-      
-      console.error(`API Error: ${response.status}`, errorText);
-      throw new Error(`Failed to fetch closed opportunities: ${response.status} - ${errorText}`);
-    }
-    
-    const data = await response.json();
-    console.log(`Received ${data.value?.length || 0} closed opportunities`);
-    
-    // Filter out opportunities without closing date
-    const validOpportunities = (data.value || []).filter(opp => 
-      opp.actualclosedate && opp.createdon
-    );
-    
-    // Set opportunities in state
-    if (setClosedOpportunities) {
-      setClosedOpportunities(validOpportunities);
-    }
-    
-    return validOpportunities;
-  } catch (error) {
-    console.error("Error fetching closed opportunities:", error);
-    if (setError) setError(`Failed to fetch closed opportunities: ${error.message}`);
-    return [];
-  } finally {
-    if (setLoading) setLoading(false);
-  }
-};
-
-/**
  * Convert status code to user-friendly label
  * @param {number} statusCode - Dynamics CRM status code
  * @returns {string} User-friendly status label
@@ -571,16 +824,6 @@ const getStatusLabel = (statusCode) => {
     case 2: return 'Lost';
     default: return `Status ${statusCode}`;
   }
-};
-
-/**
- * Generate a URL to view the opportunity in Dynamics CRM
- * @param {string} opportunityId - ID of the opportunity
- * @returns {string} URL to view the opportunity
- */
-export const getOpportunityUrl = (opportunityId) => {
-  if (!opportunityId) return '';
-  return `https://orga6a657bc.crm.dynamics.com/main.aspx?appid=e82f31a2-d4e4-ef11-9341-6045bd0438e7&pagetype=entityrecord&etn=opportunity&id=${opportunityId}`;
 };
 
 /**

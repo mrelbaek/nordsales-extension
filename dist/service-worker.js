@@ -7,11 +7,36 @@ let currentDynamicsTab = null;
 // Store tab polling intervals
 const tabPollingIntervals = {};
 
+// Extract organization ID from URL
+function extractOrgIdFromUrl(url) {
+  if (!url) return null;
+  
+  // Pattern for org ID in CRM URLs (e.g., https://orgXXXXXXX.crm.dynamics.com)
+  const orgPattern = /https:\/\/([^.]+)\.crm\.dynamics\.com/;
+  const matches = url.match(orgPattern);
+  
+  if (matches && matches[1]) {
+    console.log("Organization ID detected:", matches[1]);
+    return matches[1];
+  }
+  
+  return null;
+}
+
 // Check for opportunity ID in a tab and handle changes
 function pollForOpportunityChanges(tabId) {
   // Check if tab still exists
   chrome.tabs.get(tabId).then(tab => {
     if (tab && tab.url && tab.url.includes('crm.dynamics.com')) {
+      // Extract and store organization ID from the URL
+      const orgId = extractOrgIdFromUrl(tab.url);
+      if (orgId) {
+        chrome.storage.local.set({ 
+          currentOrgId: orgId,
+          lastOrgIdUpdated: Date.now()
+        });
+      }
+      
       // Tab exists and is a Dynamics CRM page, check for opportunity ID
       chrome.tabs.sendMessage(tabId, { type: "CHECK_OPPORTUNITY_ID" }, response => {
         // Check for error first to properly handle message channel closing
@@ -26,6 +51,14 @@ function pollForOpportunityChanges(tabId) {
             console.log("Error re-injecting content script:", err);
           });
           return;
+        }
+        
+        // Store organization ID from response if available
+        if (response && response.organizationId) {
+          chrome.storage.local.set({ 
+            currentOrgId: response.organizationId,
+            lastOrgIdUpdated: Date.now()
+          });
         }
         
         // Only proceed if we have a valid response
@@ -44,6 +77,7 @@ function pollForOpportunityChanges(tabId) {
               chrome.runtime.sendMessage({
                 type: "OPPORTUNITY_DETECTED",
                 opportunityId: response.opportunityId,
+                organizationId: response.organizationId,
                 timestamp: Date.now()
               }).catch(() => {
                 // Ignore errors if side panel isn't open
@@ -103,6 +137,16 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     currentDynamicsTab = tabId;
     console.log("Dynamics CRM tab updated:", tabId);
     
+    // Extract organization ID from the URL and store it
+    const orgId = extractOrgIdFromUrl(tab.url);
+    if (orgId) {
+      chrome.storage.local.set({ 
+        currentOrgId: orgId,
+        lastOrgIdUpdated: Date.now()
+      });
+      console.log("Stored organization ID from tab update:", orgId);
+    }
+    
     // Inject content script and start polling
     chrome.scripting.executeScript({
       target: { tabId: tabId },
@@ -159,6 +203,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       lastUpdated: message.timestamp || Date.now() 
     });
     
+    // Store organization ID if available
+    if (message.organizationId) {
+      chrome.storage.local.set({ 
+        currentOrgId: message.organizationId,
+        lastOrgIdUpdated: Date.now()
+      });
+    }
+    
     // Forward the message to any open side panel
     chrome.runtime.sendMessage(message).catch(err => {
       // It's normal for this to fail if side panel isn't open
@@ -184,11 +236,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       // Check tab still exists before sending message
       chrome.tabs.get(currentDynamicsTab).then(tab => {
         if (tab && tab.url && tab.url.includes('crm.dynamics.com')) {
+          // Extract and store org ID from tab URL
+          const orgId = extractOrgIdFromUrl(tab.url);
+          if (orgId) {
+            chrome.storage.local.set({ 
+              currentOrgId: orgId,
+              lastOrgIdUpdated: Date.now()
+            });
+          }
+          
           chrome.tabs.sendMessage(currentDynamicsTab, { type: "CHECK_OPPORTUNITY_ID" }, response => {
             // Check for error first
             if (chrome.runtime.lastError) {
               console.log("Error communicating with content script:", chrome.runtime.lastError.message);
               return;
+            }
+            
+            // Store organization ID if available
+            if (response && response.organizationId) {
+              chrome.storage.local.set({ 
+                currentOrgId: response.organizationId,
+                lastOrgIdUpdated: Date.now()
+              });
             }
             
             if (response && response.opportunityId) {
@@ -203,6 +272,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               chrome.runtime.sendMessage({
                 type: "OPPORTUNITY_DETECTED",
                 opportunityId: response.opportunityId,
+                organizationId: response.organizationId,
                 timestamp: Date.now()
               }).catch(err => {
                 console.log("Could not send to side panel:", err);
@@ -230,9 +300,11 @@ chrome.runtime.onInstalled.addListener(() => {
   console.log("NordSales extension installed/updated");
   
   // Set default values
-  chrome.storage.local.get(['autoOpen'], (result) => {
+  chrome.storage.local.get(['autoOpen', 'currentOrgId'], (result) => {
     if (result.autoOpen === undefined) {
       chrome.storage.local.set({ autoOpen: true });
     }
+    
+    // Don't set a default organization ID, we want to detect it dynamically
   });
 });

@@ -1,16 +1,18 @@
 import React, { useEffect, useState } from "react";
-import { login, getAccessToken, logout } from "../../utils/auth.js";
+import { logout, getAccessToken, login, isLoggedIn } from "../../utils/auth.js"; // Import the enhanced logout function
 import {
   getCurrentOpportunityId,
   fetchOpportunityDetails,
   fetchOpportunitiesWithActivities,
   fetchMyOpenOpportunities,
-  fetchClosedOpportunities
+  fetchClosedOpportunities,
+  getCurrentOrgId
 } from "../../utils/opportunityUtils.js";
 import ErrorMessage from "../../components/common/ErrorMessage.jsx";
 import Login from "../../components/Login.jsx";
 import OpportunityList from "../../components/OpportunityList";
 import OpportunityDetail from "../../components/OpportunityDetail";
+import Header from "../../components/Header.jsx";
 
 /**
  * Main popup component that manages the application state
@@ -26,6 +28,8 @@ const Popup = () => {
   const [activities, setActivities] = useState([]);
   const [closedOpportunities, setClosedOpportunities] = useState([]);
   const [debugInfo, setDebugInfo] = useState(null);
+  const [organizationId, setOrganizationId] = useState(null);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   // Initialize the app
   useEffect(() => {
@@ -38,16 +42,43 @@ const Popup = () => {
         setError(null);
         setDebugInfo(null);
         
+        // Get organization ID
+        try {
+          const orgId = await getCurrentOrgId();
+          setOrganizationId(orgId);
+          
+          if (orgId) {
+            chrome.storage.local.set({  "organizationId": orgId });
+            }
+
+          if (!orgId) {
+            // Wait and retry in 500ms
+            await new Promise(resolve => setTimeout(resolve, 500));
+            const retryOrgId = await getCurrentOrgId();
+            setOrganizationId(retryOrgId);
+            if (retryOrgId) {
+              setError("Please navigate to your Dynamics CRM environment first to use this extension.");
+              return;
+            }
+          }
+        } catch (orgError) {
+          console.warn("Error getting organization ID:", orgError);
+          setError("Could not determine your Dynamics CRM organization. Please navigate to Dynamics CRM first.");
+          return;
+        }
+        
         // Get the token
         const token = await getAccessToken();
-        console.log("Got access token:", token ? "yes" : "no");
+        console.log("[Popup.jsx] Got access token:", token ? "yes" : "no");
+
         setAccessToken(token);
+        console.log("[Popup.jsx] Access token used in utils:", token?.substring(0, 30));
         
         if (token) {
           // Try to get current opportunity ID
           try {
             const oppId = await getCurrentOpportunityId();
-            console.log("Current opportunity ID:", oppId);
+            console.log("[Popup.jsx] Current opportunity ID:", oppId);
             setCurrentOpportunityId(oppId);
             
             // Fetch data
@@ -65,7 +96,7 @@ const Popup = () => {
             await handleFetchClosedOpportunities(token);
           }
         } else {
-          console.log("No valid token found, user needs to log in.");
+          console.log("[Popup.jsx] No valid token found, user needs to log in.");
         }
   
         // Get the auto-open preference
@@ -87,11 +118,16 @@ const Popup = () => {
     
     // Set up polling for opportunity ID changes
     const storageCheckInterval = setInterval(() => {
-      chrome.storage.local.get(['currentOpportunityId', 'lastUpdated'], (result) => {
+      chrome.storage.local.get(['currentOpportunityId', 'lastUpdated', 'currentOrgId'], (result) => {
+        // Check for organization ID changes
+        if (result.currentOrgId && result.currentOrgId !== organizationId) {
+          setOrganizationId(result.currentOrgId);
+        }
+        
         if (result.currentOpportunityId && result.lastUpdated) {
           // If the ID is different from what we have, or we don't have one
           if (result.currentOpportunityId !== currentOpportunityId) {
-            console.log("Storage poll detected new opportunity ID:", result.currentOpportunityId);
+            console.log("[Popup.jsx] Storage poll detected new opportunity ID:", result.currentOpportunityId);
             setCurrentOpportunityId(result.currentOpportunityId);
             if (accessToken) {
               handleFetchOpportunityDetails(accessToken, result.currentOpportunityId);
@@ -99,7 +135,7 @@ const Popup = () => {
           }
         } else if (currentOpportunityId && !result.currentOpportunityId) {
           // If we had an ID but it's now cleared in storage
-          console.log("Opportunity ID cleared in storage");
+          console.log("[Popup.jsx] Opportunity ID cleared in storage");
           setCurrentOpportunityId(null);
           if (accessToken) {
             handleFetchOpportunities(accessToken);
@@ -110,16 +146,22 @@ const Popup = () => {
     
     // Listen for opportunity detection from content script
     const handleMessage = (message) => {
-      console.log("Popup received message:", message.type);
+      console.log("[Popup.jsx] Popup received message:", message.type);
       
       if (message.type === "OPPORTUNITY_DETECTED") {
-        console.log("Received opportunity ID from content script:", message.opportunityId);
+        console.log("[Popup.jsx] Received opportunity ID from content script:", message.opportunityId);
         setCurrentOpportunityId(message.opportunityId);
+        
+        // Update organization ID if provided
+        if (message.organizationId) {
+          setOrganizationId(message.organizationId);
+        }
+        
         if (accessToken) {
           handleFetchOpportunityDetails(accessToken, message.opportunityId);
         }
       } else if (message.type === "OPPORTUNITY_CLEARED") {
-        console.log("Opportunity cleared notification received");
+        console.log("[Popup.jsx] Opportunity cleared notification received");
         setCurrentOpportunityId(null);
         setCurrentOpportunity(null);
         if (accessToken) {
@@ -140,7 +182,7 @@ const Popup = () => {
   // Watch for changes to the current opportunity ID
   useEffect(() => {
     if (accessToken && currentOpportunityId) {
-      console.log("Effect triggered: fetching opportunity details");
+      console.log("[Popup.jsx] Effect triggered: fetching opportunity details");
       handleFetchOpportunityDetails(accessToken, currentOpportunityId);
     }
   }, [currentOpportunityId, accessToken]);
@@ -193,21 +235,57 @@ const Popup = () => {
       setLoading(true);
       setError(null);
       
-      // Call the utility function to fetch opportunity details
-      await fetchOpportunityDetails(
-        token, 
-        oppId, 
-        setLoading, 
-        setError, 
-        setCurrentOpportunity, 
-        setActivities
-      );
-      
-      // Also fetch closed opportunities for analytics
-      await handleFetchClosedOpportunities(token);
+      // First check if the token is still valid
+      await isLoggedIn().then(async (loggedIn) => {
+        if (!loggedIn) {
+          // Token is invalid, show login screen
+          console.log("[Popup.jsx] Token invalid or expired, clearing token state");
+          setAccessToken(null);
+          setError("Your session has expired. Please log in again.");
+          setLoading(false);
+          return;
+        }
+        
+        // Call the utility function to fetch opportunity details
+        try {
+          await fetchOpportunityDetails(
+            token, 
+            oppId, 
+            setLoading, 
+            setError, 
+            setCurrentOpportunity, 
+            setActivities
+          );
+          
+          // Also fetch closed opportunities for analytics
+          await handleFetchClosedOpportunities(token);
+        } catch (apiError) {
+          // Check if it's an authentication error
+          if (apiError.message.includes("Authentication failed") || 
+              apiError.message.includes("401")) {
+            console.error("Authentication failed during API call:", apiError);
+            
+            // Clear the token and show login screen
+            await logout(
+              setAccessToken,
+              setOpportunities,
+              setCurrentOpportunity,
+              setActivities,
+              null, // Don't set error yet
+              setLoading
+            );
+            
+            setError("Your session has expired. Please log in again.");
+          } else {
+            console.error("Error fetching opportunity details:", apiError);
+            setError(`Failed to fetch opportunity details: ${apiError.message}`);
+          }
+        }
+      });
     } catch (error) {
-      console.error("Error fetching opportunity details:", error);
-      setError(`Failed to fetch opportunity details: ${error.message}`);
+      console.error("Error checking login status:", error);
+      setError("Failed to verify authentication status. Please try again.");
+      setLoading(false);
     }
   };
 
@@ -254,38 +332,81 @@ const Popup = () => {
   /**
    * Handle login
    */
+
   const handleLogin = async () => {
     try {
-      setError(null);
-      const token = await login();
-      console.log("Login successful, got token");
-      setAccessToken(token);
+      // Check for organization ID first
+      if (!organizationId) {
+        const orgId = await getCurrentOrgId();
+        if (!orgId) {
+          setError("Please navigate to your Dynamics CRM environment first to use this extension.");
+          return;
+        }
+        setOrganizationId(orgId);
+      }
       
-      // Check if we have an opportunity ID
-      if (currentOpportunityId) {
-        handleFetchOpportunityDetails(token, currentOpportunityId);
-      } else {
-        handleFetchOpportunities(token);
-        handleFetchClosedOpportunities(token);
+      setError(null);
+      setLoading(true);
+      
+      try {
+        const token = await login();
+        console.log("[Popup.jsx] Login successful, got token");
+        setAccessToken(token);
+        
+        // Check if we have an opportunity ID
+        if (currentOpportunityId) {
+          handleFetchOpportunityDetails(token, currentOpportunityId);
+        } else {
+          handleFetchOpportunities(token);
+          handleFetchClosedOpportunities(token);
+        }
+      } catch (loginError) {
+        if (loginError.message.includes("did not approve")) {
+          console.log("[Popup.jsx] User cancelled the login dialog");
+          setError("Authentication cancelled. Please try again.");
+        } else {
+          console.error("Login failed:", loginError);
+          setError(`Login failed: ${loginError.message}`);
+        }
+      } finally {
+        setLoading(false);
       }
     } catch (error) {
-      console.error("Login failed:", error);
-      setError(`Login failed: ${error.message}`);
+      console.error("Login preparation error:", error);
+      setError(`Login preparation failed: ${error.message}`);
+      setLoading(false);
     }
   };
 
   /**
-   * Handle logout
+   * Handle logout action with state updates
    */
   const handleLogout = async () => {
-    await logout();
-    setAccessToken(null);
-    setOpportunities([]);
-    setCurrentOpportunity(null);
-    setActivities([]);
-    setClosedOpportunities([]);
-    setError(null);
-    setDebugInfo(null);
+    try {
+      setIsLoggingOut(true);
+      
+      // Call the enhanced logout function with all state setters
+      const result = await logout(
+        setAccessToken,
+        setOpportunities,
+        setCurrentOpportunity,
+        setActivities,
+        setError,
+        null // Don't pass setLoading as we're using setIsLoggingOut instead
+      );
+      
+      if (result.success) {
+        console.log("[Popup.jsx] Logout successful");
+      } else {
+        console.error("Logout failed:", result.error);
+        setError(`Logout failed: ${result.error}`);
+      }
+    } catch (error) {
+      console.error("Unexpected error during logout:", error);
+      setError(`An unexpected error occurred during logout: ${error.message}`);
+    } finally {
+      setIsLoggingOut(false);
+    }
   };
 
   /**
@@ -324,16 +445,45 @@ const Popup = () => {
   const renderContent = () => {
     try {
       // Add explicit logging
-      console.log('RENDER CONTENT DEBUG:');
-      console.log('Access Token:', !!accessToken);
-      console.log('Current Opportunity:', currentOpportunity);
-      console.log('Opportunities Count:', opportunities.length);
-      console.log('Closed Opportunities Count:', closedOpportunities.length);
-      console.log('Opportunities:', JSON.stringify(opportunities.map(o => ({
+      console.log('[Popup] RENDER CONTENT DEBUG:');
+      console.log('[Popup] Organization ID:', organizationId);
+      console.log('[Popup] Access Token:', !!accessToken);
+      console.log('[Popup] Current Opportunity:', currentOpportunity);
+      console.log('[Popup] Opportunities Count:', opportunities.length);
+      console.log('[Popup] Closed Opportunities Count:', closedOpportunities.length);
+      console.log('[Popup] Opportunities:', JSON.stringify(opportunities.map(o => ({
         id: o.opportunityid, 
         name: o.name, 
         activitiesCount: o.activities?.length || 0
       })), null, 2));
+      
+      // Show organization selection message if no org ID is detected
+      if (!organizationId) {
+        return (
+          <div style={{ padding: "20px", textAlign: "center" }}>
+            <h3>Organization Not Detected</h3>
+            <p>Please navigate to your Dynamics CRM environment first to use this extension.</p>
+            <p>The extension will automatically detect your organization ID from the URL.</p>
+            <p style={{ marginTop: "20px", fontWeight: "bold" }}>
+              Your URL should look like: https://yourorgname.crm.dynamics.com/...
+            </p>
+            <button 
+              onClick={() => window.open("https://make.powerapps.com/environments", "_blank")}
+              style={{
+                marginTop: "20px",
+                padding: "10px 16px",
+                backgroundColor: "#0078d4",
+                color: "white",
+                border: "none",
+                borderRadius: "4px",
+                cursor: "pointer"
+              }}
+            >
+              Go to Power Apps
+            </button>
+          </div>
+        );
+      }
   
       if (!accessToken) {
         return <Login onLogin={handleLogin} />;
@@ -348,6 +498,8 @@ const Popup = () => {
             onBackClick={handleBackToList}
             toggleAutoOpen={toggleAutoOpen}
             autoOpen={autoOpen}
+            onLogout={handleLogout}
+            isLoggingOutgOut={isLoggingOut}
           />
         );
       }
@@ -363,7 +515,7 @@ const Popup = () => {
               
               // Map each opportunity with proper safety checks
               return opportunities.map((opp) => {
-                console.log(`Processing opportunity:`, opp);
+                console.log(`[Popup.jsx] Processing opportunity:`, opp);
                 if (!opp) {
                   console.warn("Received undefined opportunity object");
                   return {
@@ -395,6 +547,7 @@ const Popup = () => {
           loading={loading}
           onLogout={handleLogout}
           onOpportunitySelect={handleOpportunitySelect}
+          isLoggingOut={isLoggingOut}
           toggleAutoOpen={toggleAutoOpen}
           autoOpen={autoOpen}
           onFetchMyOpenOpportunities={handleFetchMyOpenOpportunities}
@@ -435,8 +588,9 @@ const Popup = () => {
       }}>
         <details>
           <summary>Debug</summary>
+          <div>Org ID: {organizationId || 'Not detected'}</div>
           <div>Token: {accessToken ? 'Yes' : 'No'}</div>
-          <div>ID: {currentOpportunityId || 'None'}</div>
+          <div>Opp ID: {currentOpportunityId || 'None'}</div>
           <div>Opportunities: {opportunities.length}</div>
           <div>Closed Opportunities: {closedOpportunities.length}</div>
         </details>

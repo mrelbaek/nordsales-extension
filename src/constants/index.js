@@ -1,5 +1,7 @@
-// Base URL for API calls - replace with your actual org ID
-export const BASE_URL = "https://orga6a657bc.crm.dynamics.com/api/data/v9.2";
+// Base URL will be determined dynamically at runtime
+// This is used as a placeholder and will be replaced with the actual URL
+// based on the organization ID detected from Dynamics CRM
+export const BASE_URL = null; // Set to null to indicate it needs to be determined dynamically
 
 // Calendar constants
 export const DAYS_OF_WEEK = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];

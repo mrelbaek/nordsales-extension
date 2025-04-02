@@ -10,8 +10,9 @@ import { PiGear, PiList, PiX, PiArrowsClockwise, PiUser, PiChartBar, PiHouse, Pi
  * @param {Function} options.onBackClick - Function to call when back button is clicked
  * @param {Function} options.onMenuClick - Function to call when menu button is clicked
  * @param {Function} options.onSettingsClick - Function to call when settings button is clicked
- * @param {Function} props.onFetchMyOpenOpportunities - Function to fetch user's open opportunities
- * @param {Function} props.onLogout - Function to handle logout
+ * @param {Function} options.onFetchMyOpenOpportunities - Function to fetch user's open opportunities
+ * @param {Function} options.onLogout - Function to handle logout
+ * @param {boolean} options.isLoggingOut - Whether logout is in progress
  * @returns {JSX.Element} The header element
  */
 
@@ -22,7 +23,8 @@ const Header = ({
   onMenuClick = () => {},
   onSettingsClick = () => {},
   onFetchMyOpenOpportunities = () => {},
-  onLogout = () => {}
+  onLogout = () => {},
+  isLoggingOut = false
 }) => {
   const [showSidebar, setShowSidebar] = useState(false);
   
@@ -113,16 +115,33 @@ const Header = ({
             
             <button 
               onClick={handleLogout}
+              disabled={isLoggingOut}
               style={{
                 background: "none",
                 border: "none",
-                cursor: "pointer",
+                cursor: isLoggingOut ? "not-allowed" : "pointer",
                 display: "flex", 
                 alignItems: "center",
-                justifyContent: "center"
+                justifyContent: "center",
+                opacity: isLoggingOut ? 0.7 : 1
               }}
             >
               <PiSignOut size={20} />
+              {isLoggingOut && (
+                <span style={{ 
+                  fontSize: "10px", 
+                  marginLeft: "2px", 
+                  position: "absolute", 
+                  right: "4px", 
+                  top: "4px",
+                  width: "8px",
+                  height: "8px",
+                  borderRadius: "50%",
+                  borderTop: "2px solid #333",
+                  borderRight: "2px solid transparent",
+                  animation: "spin 1s linear infinite"
+                }} />
+              )}
             </button>
 
             {showBackButton && (
@@ -143,6 +162,16 @@ const Header = ({
           </div>
         </div>
       </div>
+      
+      {/* Add keyframe animation for spinner */}
+      <style>
+        {`
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `}
+      </style>
       
       {/* Overlay and Sidebar */}
       {showSidebar && (
@@ -278,17 +307,32 @@ const Header = ({
             <div style={{ padding: "16px", borderTop: "1px solid #f0f0f0" }}>
               <button 
                 onClick={handleLogout}
+                disabled={isLoggingOut}
                 style={{
                   width: "100%",
                   padding: "10px",
                   backgroundColor: "white",
                   border: "1px solid #e0e0e0",
                   borderRadius: "4px",
-                  cursor: "pointer",
-                  textAlign: "center"
+                  cursor: isLoggingOut ? "not-allowed" : "pointer",
+                  textAlign: "center",
+                  position: "relative",
+                  opacity: isLoggingOut ? 0.7 : 1
                 }}
               >
-                Logout
+                {isLoggingOut ? "Logging out..." : "Logout"}
+                {isLoggingOut && (
+                  <span style={{ 
+                    display: "inline-block",
+                    width: "10px",
+                    height: "10px",
+                    marginLeft: "8px",
+                    borderRadius: "50%",
+                    borderTop: "2px solid #333",
+                    borderRight: "2px solid transparent",
+                    animation: "spin 1s linear infinite"
+                  }} />
+                )}
               </button>
             </div>
           </div>

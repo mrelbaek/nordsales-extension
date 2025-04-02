@@ -2,8 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { calculateDaysSinceLastContact } from '../../utils/activityUtils';
 import { calculateDaysBetween } from '../../utils/dateUtils';
 import AccordionSection from '../common/AccordionSection';
-import { BASE_URL } from '../../constants'; // Import BASE_URL from constants
-import { getOpportunityUrl } from '../../utils/opportunityUtils'; // Import the utility function if available
+import { getOpportunityUrl } from '../../utils/opportunityUtils';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -24,33 +23,6 @@ ChartJS.register(
   Tooltip,
   Legend
 );
-
-/**
- * Generate opportunity URL based on opportunity ID
- * Uses the existing getOpportunityUrl utility if available, otherwise constructs the URL
- * 
- * @param {string} opportunityId - ID of the opportunity
- * @returns {string|null} URL to view the opportunity
- */
-const generateOpportunityUrl = (opportunityId) => {
-  if (!opportunityId) return null;
-  
-  // If getOpportunityUrl utility is imported, use it
-  if (typeof getOpportunityUrl === 'function') {
-    return getOpportunityUrl(opportunityId);
-  }
-  
-  // Otherwise, construct the URL using BASE_URL
-  // Extract the organization ID from BASE_URL
-  // URL format is typically: https://orgXXXXXXX.crm.dynamics.com/api/data/v9.2
-  const orgMatch = BASE_URL.match(/https:\/\/([^.]+)\.crm\.dynamics\.com/);
-  const orgId = orgMatch ? orgMatch[1] : '';
-  
-  if (!orgId) return null;
-  
-  // Construct the URL (this is a fallback, ideally you should use your existing utility)
-  return `https://${orgId}.crm.dynamics.com/main.aspx?pagetype=entityrecord&etn=opportunity&id=${opportunityId}`;
-};
 
 /**
  * Analytics component for opportunity metrics
@@ -95,67 +67,80 @@ const Analytics = ({ activities = [], closedOpportunities = [], opportunity, isO
         return Math.floor((closedDate - createdDate) / (1000 * 60 * 60 * 24));
       });
       
-      // Create tooltip data for closed opportunities
-      const tooltips = sortedOpportunities.map(opp => ({
-        name: opp.name || 'Unnamed Opportunity',
-        description: opp.description || '',
-        value: opp.estimatedvalue || opp.totalamount || 0,
-        status: opp.statecode === 0 ? 'Open' : opp.statecode === 1 ? 'Won' : 'Lost',
-        id: opp.opportunityid,
-        daysOpen: Math.floor((new Date(opp.actualclosedate) - new Date(opp.createdon)) / (1000 * 60 * 60 * 24)),
-        url: generateOpportunityUrl(opp.opportunityid)
-      }));
-      
-      // Create labels for the chart
-      const labels = sortedOpportunities.map((_, index) => `Opp ${index + 1}`);
-      
-      // Create data array with closed opportunities
-      const data = [...times];
-      
-      // Create background colors array (gray with transparency)
-      const backgroundColors = Array(times.length).fill('rgba(189, 189, 189, 0.7)'); // Grey with transparency
-      
-      // Add current opportunity data and tooltip
-      let updatedTooltips = [...tooltips];
-      
-      if (opportunity && opportunity.createdon) {
-        labels.unshift('Current');
-        data.unshift(currentOpportunityDays);
-        backgroundColors.unshift('rgba(196, 228, 86, 0.8)'); // Lime green with transparency
-        
-        // Add current opportunity tooltip
-        updatedTooltips.unshift({
-          name: opportunity.name || 'Current Opportunity',
-          description: opportunity.description || '',
-          value: opportunity.estimatedvalue || 0,
-          status: 'Open',
-          daysOpen: currentOpportunityDays,
-          url: generateOpportunityUrl(opportunity.opportunityid)
+      const generateTooltips = async () => {
+        // Create tooltip data for closed opportunities
+        const tooltipsPromises = sortedOpportunities.map(async (opp) => {
+          const url = await getOpportunityUrl(opp.opportunityid);
+          
+          return {
+            name: opp.name || 'Unnamed Opportunity',
+            description: opp.description || '',
+            value: opp.estimatedvalue || opp.totalamount || 0,
+            status: opp.statecode === 0 ? 'Open' : opp.statecode === 1 ? 'Won' : 'Lost',
+            id: opp.opportunityid,
+            daysOpen: Math.floor((new Date(opp.actualclosedate) - new Date(opp.createdon)) / (1000 * 60 * 60 * 24)),
+            url: url
+          };
         });
-      }
+        
+        // Wait for all URL generation promises to resolve
+        const tooltips = await Promise.all(tooltipsPromises);
+        
+        // Create labels for the chart
+        const labels = sortedOpportunities.map((_, index) => `Opp ${index + 1}`);
+        
+        // Create data array with closed opportunities
+        const data = [...times];
+        
+        // Create background colors array (gray with transparency)
+        const backgroundColors = Array(times.length).fill('rgba(189, 189, 189, 0.7)'); // Grey with transparency
+        
+        // Add current opportunity data and tooltip
+        let updatedTooltips = [...tooltips];
+        
+        if (opportunity && opportunity.createdon) {
+          labels.unshift('Current');
+          data.unshift(currentOpportunityDays);
+          backgroundColors.unshift('rgba(196, 228, 86, 0.8)'); // Lime green with transparency
+          
+          // Add current opportunity tooltip
+          const currentUrl = await getOpportunityUrl(opportunity.opportunityid);
+          
+          updatedTooltips.unshift({
+            name: opportunity.name || 'Current Opportunity',
+            description: opportunity.description || '',
+            value: opportunity.estimatedvalue || 0,
+            status: 'Open',
+            daysOpen: currentOpportunityDays,
+            url: currentUrl
+          });
+        }
+        
+        setTooltipData(updatedTooltips);
+        
+        // Calculate average (excluding current opportunity for accurate historical average)
+        const avgTime = Math.round(times.reduce((acc, time) => acc + time, 0) / (times.length || 1));
+        console.log("Average closing time calculated:", avgTime, "days");
+        
+        setAverageClosingTime(avgTime);
+        
+        // Set chart data
+        setChartData({
+          labels,
+          datasets: [
+            {
+              label: 'Days',
+              data,
+              backgroundColor: backgroundColors,
+              borderRadius: 4,
+              borderSkipped: false,
+              barThickness: 30,
+            }
+          ]
+        });
+      };
       
-      setTooltipData(updatedTooltips);
-      
-      // Calculate average (excluding current opportunity for accurate historical average)
-      const avgTime = Math.round(times.reduce((acc, time) => acc + time, 0) / (times.length || 1));
-      console.log("Average closing time calculated:", avgTime, "days");
-      
-      setAverageClosingTime(avgTime);
-      
-      // Set chart data
-      setChartData({
-        labels,
-        datasets: [
-          {
-            label: 'Days',
-            data,
-            backgroundColor: backgroundColors,
-            borderRadius: 4,
-            borderSkipped: false,
-            barThickness: 30,
-          }
-        ]
-      });
+      generateTooltips();
     }
   }, [closedOpportunities, opportunity, currentOpportunityDays]);
 
@@ -193,10 +178,17 @@ const Analytics = ({ activities = [], closedOpportunities = [], opportunity, isO
       console.log("Opening URL:", opportunityData.url);
       window.open(opportunityData.url, '_blank');
     } else if (opportunityData && opportunityData.id) {
-      // As a fallback, try to construct a basic URL
-      const url = generateOpportunityUrl(opportunityData.id);
-      console.log("Opening fallback URL:", url);
-      if (url) window.open(url, '_blank');
+      // As a fallback, try to get the URL again
+      getOpportunityUrl(opportunityData.id)
+        .then(url => {
+          if (url) {
+            console.log("Opening dynamically generated URL:", url);
+            window.open(url, '_blank');
+          }
+        })
+        .catch(error => {
+          console.error("Error generating URL:", error);
+        });
     }
   };
 

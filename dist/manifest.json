@@ -20,7 +20,8 @@
     "sidePanel"
   ],
   "host_permissions": [
-    "https://*.crm.dynamics.com/*"
+    "https://*.crm.dynamics.com/*",
+    "https://*.microsoftonline.com/*"
   ],
   "content_scripts": [
     {

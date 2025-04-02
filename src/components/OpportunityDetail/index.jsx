@@ -23,6 +23,8 @@ const OpportunityDetail = ({
   activities,
   closedOpportunities = [],
   onBackClick,
+  onLogout,
+  isLoggingOut,
   toggleAutoOpen,
   autoOpen
 }) => {
@@ -47,6 +49,8 @@ const OpportunityDetail = ({
         title="Nordsales"
         showBackButton={true}
         onBackClick={onBackClick}
+        onLogout={onLogout}
+        isLoggingOut={isLoggingOut}
       />
 
       {/* Opportunity Name */}

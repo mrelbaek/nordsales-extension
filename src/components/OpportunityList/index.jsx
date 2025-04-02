@@ -18,7 +18,8 @@ import OpportunityCard from './OpportunityCard';
 const OpportunityList = ({ 
   opportunities = [], 
   loading, 
-  onLogout, 
+  onLogout,
+  isLoggingOut, 
   onOpportunitySelect,
   toggleAutoOpen,
   autoOpen,
@@ -30,6 +31,9 @@ const OpportunityList = ({
       <Header
         title="Nordsales"
         showBackButton={false} 
+        onLogout={onLogout}
+        isLoggingOut={isLoggingOut}
+        onFetchMyOpenOpportunities={onFetchMyOpenOpportunities}
       />
       {/* Content header */}
       <div>

@@ -204,6 +204,83 @@ export const fetchOpportunityDetails = async (token, oppId) => {
 };
 
 /**
+ * Fetch all activities created by the current user in the last 12 months
+ * @param {string} token - Access token for Dynamics CRM
+ * @returns {Promise<Array>} Array of activity objects
+ */
+export const fetchUserActivitiesForLastYear = async (token) => {
+  try {
+    // Get base URL and current user ID
+    const baseUrl = await getDynamicsBaseUrl();
+    if (!baseUrl) {
+      throw new Error("Cannot fetch activities: Organization ID not found");
+    }
+    
+    const currentUserId = await getCurrentUserId(token);
+    if (!currentUserId) {
+      throw new Error("Could not determine current user ID");
+    }
+    
+    console.log(`[API] Fetching activities for user ${currentUserId} for the last 12 months...`);
+    
+    // Calculate date 12 months ago for filtering
+    const twelveMonthsAgo = new Date();
+    twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
+    const formattedDate = twelveMonthsAgo.toISOString();
+    
+    // Build URL to fetch activities created by the user in the last 12 months
+    // This includes ANY activity created by the user, not just ones related to opportunities
+    const url = `${baseUrl}/activitypointers?$filter=_createdby_value eq ${currentUserId} and createdon ge ${formattedDate}&$select=activityid,subject,activitytypecode,createdon,scheduledstart,scheduledend&$orderby=createdon desc&$top=5000`;
+    
+    console.log(`[API] User activities URL: ${url}`);
+    
+    const response = await fetch(url, {
+      headers: {
+        "Authorization": `${token}`,
+        "Accept": "application/json",
+        "OData-MaxVersion": "4.0",
+        "OData-Version": "4.0"
+      }
+    });
+    
+    if (response.status === 401) {
+      console.warn("[API] Authentication token expired or invalid");
+      throw new Error("Authentication failed. Please log in again.");
+    }
+    
+    if (!response.ok) {
+      let errorText = '';
+      try {
+        const errorData = await response.json();
+        errorText = JSON.stringify(errorData);
+      } catch (e) {
+        errorText = await response.text();
+      }
+      
+      console.error(`[API] API Error: ${response.status}`, errorText);
+      throw new Error(`Failed to fetch user activities: ${response.status} - ${errorText}`);
+    }
+    
+    const data = await response.json();
+    console.log(`[API] Received ${data.value?.length || 0} user activities`);
+    
+    // Sample data for debugging
+    if (data.value && data.value.length > 0) {
+      console.log("[API] Sample user activity:", {
+        id: data.value[0].activityid,
+        type: data.value[0].activitytypecode,
+        createdon: data.value[0].createdon
+      });
+    }
+    
+    return data.value || [];
+  } catch (error) {
+    console.error("[API] Error fetching user activities:", error);
+    throw error;
+  }
+};
+
+/**
  * Fetch list of opportunities with their activities
  * @param {string} token - Access token
  * @param {Function} setLoading - State setter for loading indicator

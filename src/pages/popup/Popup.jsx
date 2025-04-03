@@ -555,6 +555,7 @@ const Popup = () => {
           closedOpportunities={closedOpportunities}
           toggleAutoOpen={toggleAutoOpen}
           autoOpen={autoOpen}
+          accessToken={accessToken}
           onFetchMyOpenOpportunities={handleFetchMyOpenOpportunities}
         />
       );

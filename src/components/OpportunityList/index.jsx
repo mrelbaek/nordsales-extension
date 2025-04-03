@@ -4,6 +4,9 @@ import OpportunityCard from './OpportunityCard';
 import ListAnalytics from './Analytics'; 
 import SalesCycleChart from './SalesCycleChart';
 import AccordionSection from '../common/AccordionSection';
+import WinRate from './WinRate';
+import UserActivityChart from './UserActivityChart';
+import WonLostChart from './WonLostChart';
 
 /**
  * Opportunity list component
@@ -17,6 +20,7 @@ import AccordionSection from '../common/AccordionSection';
  * @param {Function} props.toggleAutoOpen - Function to call when auto-open toggle is clicked
  * @param {boolean} props.autoOpen - Whether auto-open is enabled
  * @param {Function} props.onFetchMyOpenOpportunities - Function to fetch user's open opportunities
+ * @param {string} props.accessToken - Access token for API calls
  * @returns {JSX.Element} Opportunity list component
  */
 const OpportunityList = ({ 
@@ -28,12 +32,15 @@ const OpportunityList = ({
   closedOpportunities = [],
   toggleAutoOpen,
   autoOpen,
-  onFetchMyOpenOpportunities
+  onFetchMyOpenOpportunities,
+  accessToken
 }) => {
   const [accordionState, setAccordionState] = useState({
     analytics: true,
     salesCycle: true,
-    opportunities: true
+    opportunities: true,
+    activities: true,
+    wonLost: true
   });
 
   const toggleAccordion = (section) => {
@@ -155,9 +162,23 @@ const OpportunityList = ({
               </div>
             </div>
           </div>
+
+          {/* Win Rate Section */}
+          <WinRate closedOpportunities={closedOpportunities} />
         </AccordionSection>
       </div>
       
+      {/* Won/Lost Chart Section */}
+      <div style={{ padding: "0 16px" }}>
+        <AccordionSection
+          title="Win/Loss Distribution"
+          isOpen={accordionState.wonLost}
+          onToggle={() => toggleAccordion('wonLost')}
+        >
+          <WonLostChart closedOpportunities={closedOpportunities} />
+        </AccordionSection>
+      </div>
+
       {/* Sales Cycle Length Section */}
       <div style={{ padding: "0 16px" }}>
         <AccordionSection
@@ -168,6 +189,17 @@ const OpportunityList = ({
           <SalesCycleChart closedOpportunities={closedOpportunities} />
         </AccordionSection>
       </div>
+
+      {/* Activities Chart Section */}
+      <div style={{ padding: "0 16px" }}>
+        <AccordionSection
+          title="Activity Trends"
+          isOpen={accordionState.activities}
+          onToggle={() => toggleAccordion('activities')}
+        >
+          <UserActivityChart accessToken={accessToken} />
+        </AccordionSection>
+      </div>      
       
       {/* Opportunities List Section */}
       <div style={{ padding: "0 16px" }}>

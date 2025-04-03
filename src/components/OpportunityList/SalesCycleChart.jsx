@@ -38,10 +38,10 @@ const SalesCycleChart = ({ closedOpportunities = [] }) => {
   useEffect(() => {
     console.log("[SalesCycleChart] closedOpportunities:", closedOpportunities?.length);
     if (closedOpportunities && closedOpportunities.length > 0) {
-      // Take only the last 10 closed opportunities and sort by actualclosedate
+      // Take only the last 15 closed opportunities and sort by actualclosedate
       const sortedOpportunities = [...closedOpportunities]
         .sort((a, b) => new Date(b.actualclosedate) - new Date(a.actualclosedate))
-        .slice(0, 10);
+        .slice(0, 15);
       
       // Calculate closing times (days between creation and close)
       const times = sortedOpportunities.map(opp => {
@@ -105,7 +105,7 @@ const SalesCycleChart = ({ closedOpportunities = [] }) => {
               backgroundColor: backgroundColors,
               borderRadius: 4,
               borderSkipped: false,
-              barThickness: 20, // Smaller bars for more data points
+              barThickness: 10, // Smaller bars for more data points
             }
           ]
         });
@@ -252,7 +252,7 @@ const SalesCycleChart = ({ closedOpportunities = [] }) => {
         padding: "16px"
       }}>
         <div style={{ fontSize: "14px", color: "#333", marginBottom: "16px" }}>
-          Sales Cycle Length - Last 10 Closed Opportunities
+          Sales Cycle Length - Last 15 Closed Opportunities
         </div>
         
         <div style={{ height: 250, position: 'relative' }}>

@@ -82,8 +82,8 @@ const SalesCycleChart = ({ closedOpportunities = [] }) => {
         // Create background colors array - use different colors based on status
         const backgroundColors = sortedOpportunities.map(opp => {
           // Won = green, Lost = red, Default = gray
-          if (opp.statecode === 1) return 'rgba(76, 175, 80, 0.7)'; // Green for won
-          if (opp.statecode === 2) return 'rgba(244, 67, 54, 0.7)'; // Red for lost
+          if (opp.statecode === 1) return 'rgba(202, 238, 90, 0.7)'; // Green for won
+          if (opp.statecode === 2) return 'rgba(124, 124, 129, 0.7)'; // Red for lost
           return 'rgba(189, 189, 189, 0.7)'; // Grey for others
         });
         
@@ -234,8 +234,8 @@ const SalesCycleChart = ({ closedOpportunities = [] }) => {
         ctx.beginPath();
         ctx.moveTo(xAxis.left, yPos);
         ctx.lineTo(xAxis.right, yPos);
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = '#c4e456';
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = '#818183';
         ctx.stroke();
         ctx.restore();
       }
@@ -247,12 +247,12 @@ const SalesCycleChart = ({ closedOpportunities = [] }) => {
       {/* Chart Content */}
       <div style={{ 
         marginBottom: "16px",
-        backgroundColor: "#f9f9f9", 
+        //backgroundColor: "#f9f9f9", //
         borderRadius: "8px",
         padding: "16px"
       }}>
         <div style={{ fontSize: "14px", color: "#333", marginBottom: "16px" }}>
-          Closing Time - Last 10 Closed Opportunities
+          Sales Cycle Length - Last 10 Closed Opportunities
         </div>
         
         <div style={{ height: 250, position: 'relative' }}>
@@ -289,7 +289,7 @@ const SalesCycleChart = ({ closedOpportunities = [] }) => {
           <div style={{ 
             width: "16px", 
             height: "2px", 
-            backgroundColor: "#c4e456",
+            backgroundColor: "#818183",
             marginRight: "6px"
           }}></div>
           <div style={{ fontSize: "12px", color: "#666" }}>

@@ -1,0 +1,33 @@
+/* src/styles/variables.css */
+:root {
+    /* Typography */
+    --font-family-primary: 'Segoe UI', 'Roboto', sans-serif;
+    --font-size-base: 14px;
+    --font-size-small: 12px;
+    --font-size-large: 16px;
+    --font-size-xlarge: 18px;
+    --font-weight-normal: 400;
+    --font-weight-medium: 500;
+    --font-weight-bold: 600;
+    
+    /* Colors */
+    --color-primary: #c4e456;
+    --color-primary-hover: #d4ff58;
+    --color-secondary: #f8f8f8;
+    --color-secondary-hover: #f0f0f0;
+    --color-text-primary: #333333;
+    --color-text-secondary: #666666;
+    --color-border: #e0e0e0;
+    
+    /* Spacing */
+    --spacing-xs: 4px;
+    --spacing-sm: 8px;
+    --spacing-md: 12px;
+    --spacing-lg: 16px;
+    --spacing-xl: 24px;
+    
+    /* Effects */
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
+    --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.12);
+    --border-radius: 8px;
+  }

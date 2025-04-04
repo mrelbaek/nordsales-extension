@@ -44,16 +44,17 @@ const OpportunityDetail = ({
   };
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", width: "100%", overflow: "auto" }}>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", width: "100%", overflow: "auto", backgroundColor: "#ededed" }}>
+      {/* Header */}
       <Header
-        title="Nord Lens"
+        title="Lens"
         showBackButton={true}
         onBackClick={onBackClick}
         onLogout={onLogout}
         isLoggingOut={isLoggingOut}
       />
 
-      {/* Opportunity Name */}
+      {/* Opportunity Name 
       <div>
         <h3 style={{
           padding: "12px 16px 0px 16px",
@@ -76,10 +77,11 @@ const OpportunityDetail = ({
           </div>
         )}
       </div>
-
+      */}
       {/* Main Content Area - Scrollable */}
       <div style={{ flex: 1, overflow: "auto", padding: "0 16px 16px 16px" }}>
-        {/* Action Buttons */}
+      
+        {/* Action Buttons 
         <div style={{ 
           display: "flex", 
           gap: "10px", 
@@ -106,10 +108,14 @@ const OpportunityDetail = ({
             Add to list
           </button>
         </div>
+      */} 
+
 
         {/* Statistics Section */}
         <Statistics 
           activities={activities} 
+          opportunity={opportunity}
+          closedOpportunities={closedOpportunities}
           isOpen={accordionState.statistics}
           onToggle={() => toggleAccordion('statistics')}
         />

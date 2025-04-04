@@ -573,7 +573,7 @@ const Popup = () => {
       boxSizing: "border-box",
       display: "flex",
       flexDirection: "column",
-      backgroundColor: "#f3f2f1"
+      backgroundColor: "#ededed"
     }}>
       <ErrorMessage 
         message={error} 

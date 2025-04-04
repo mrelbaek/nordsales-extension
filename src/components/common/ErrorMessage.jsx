@@ -14,7 +14,7 @@ const ErrorMessage = ({ message, onDismiss }) => {
   return (
     <div style={{ 
       padding: "8px", 
-      backgroundColor: "#f3f2f1", 
+      backgroundColor: "#ededed", 
       color: "#c62828", 
       borderRadius: "4px", 
       margin: "8px",

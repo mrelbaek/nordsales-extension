@@ -1,4 +1,5 @@
 import React from 'react';
+import { PiCaretCircleDownLight, PiCaretCircleRightLight } from "react-icons/pi";
 
 /**
  * Accordion section with toggle functionality
@@ -25,8 +26,8 @@ const AccordionSection = ({ title, isOpen, onToggle, children }) => {
         }}
       >
         <div style={{ display: "flex", alignItems: "center" }}>
-          <span style={{ marginRight: "8px" }}>{isOpen ? "▼" : "►"}</span>
-          <h3 style={{ margin: "0", fontSize: "16px" }}>{title}</h3>
+          <span style={{ marginRight: "10px", fontSize: "16px", fontWeight: "bold", paddingTop: "4px"}}>{isOpen ? <PiCaretCircleDownLight size={20}/> : <PiCaretCircleRightLight size={20}/>}</span>
+          <h3 style={{ margin: "0", fontSize: "14px" }}>{title}</h3>
         </div>
       </div>
       

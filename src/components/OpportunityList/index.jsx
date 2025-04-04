@@ -37,10 +37,10 @@ const OpportunityList = ({
 }) => {
   const [accordionState, setAccordionState] = useState({
     analytics: true,
-    salesCycle: true,
+    salesCycle: false,
     opportunities: true,
-    activities: true,
-    wonLost: true
+    activities: false,
+    wonLost: false
   });
 
   const toggleAccordion = (section) => {
@@ -74,18 +74,25 @@ const OpportunityList = ({
     : 0;
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", width: "100%", overflow: "auto" }}>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", width: "100%", overflow: "hidden", height: "100%", background: "#ededed" }}>
       {/* Header */}
       <Header
-        title="Nord Lens"
+        title="Lens"
         showBackButton={false} 
         onLogout={onLogout}
         isLoggingOut={isLoggingOut}
         onFetchMyOpenOpportunities={onFetchMyOpenOpportunities}
       />
-      
+    
+    {/* Scrollable content area */}
+    <div style={{
+      flex: 1,
+      overflowY: "auto", // Allow this container to scroll
+      paddingTop: "8px" // Add space after sticky header
+    }}>
+
       {/* Portfolio Analytics Section */}
-      <div style={{ padding: "0 16px" }}>
+      <div style={{ padding: "12px 16px 0px 16px" }}>
         <AccordionSection
           title="Portfolio Analytics"
           isOpen={accordionState.analytics}
@@ -132,33 +139,6 @@ const OpportunityList = ({
                 marginLeft: "10px" 
               }}>
                 {opportunityStats.closing}
-              </div>
-            </div>
-            
-            {/* Average Closing Time */}
-            <div style={{ 
-              flex: 1,
-              padding: "8px 12px", 
-              borderRadius: "10px",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              backgroundColor: "#f5f5f5",
-              boxShadow: "0 1px 2px rgba(0,0,0,0.05)"
-            }}>
-              <div>
-                <div style={{ fontSize: "13px", color: "#666" }}>Avg. Closing Time</div>
-              </div>
-              <div style={{ 
-                fontSize: "20px", 
-                fontWeight: "bold",
-                marginLeft: "10px",
-                display: "flex",
-                alignItems: "baseline",
-                gap: "2px"
-              }}>
-                {averageClosingTime || 0} 
-                <span style={{ fontSize: "12px", color: "#666", marginLeft: "2px" }}>days</span>
               </div>
             </div>
           </div>
@@ -227,6 +207,7 @@ const OpportunityList = ({
           )}
         </AccordionSection>
       </div>
+    </div>
 
       {/* Auto-open toggle */}
       <div style={{ 

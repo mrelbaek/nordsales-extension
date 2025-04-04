@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { PiGear, PiList, PiX, PiArrowsClockwise, PiUser, PiChartBar, PiHouse, PiSignOut } from "react-icons/pi";
 
 /**
- * Creates a header element with consistent styling
+ * Creates a header element with consistent styling and sticky positioning
  * 
  * @param {Object} options - Header options
  * @param {string} options.title - The title to display in the header
@@ -17,7 +17,7 @@ import { PiGear, PiList, PiX, PiArrowsClockwise, PiUser, PiChartBar, PiHouse, Pi
  */
 
 const Header = ({
-  title = "Nordsales",
+  title = "Lens",
   showBackButton = true,
   onBackClick = () => {},
   onMenuClick = () => {},
@@ -46,14 +46,19 @@ const Header = ({
   
   return (
     <>
-      {/* Header Bar */}
+      {/* Header Bar - Added sticky positioning */}
       <div style={{ 
         display: "flex", 
-        justifyContent: "space-between", 
-        marginBottom: "4px", 
-        overflow: "auto",
-        position: "relative",
-        zIndex: 10
+        justifyContent: "space-between",
+        position: "sticky",
+        top: 0,
+        left: 0,
+        right: 0,
+        zIndex: 100,
+        backgroundColor: "#fff",
+        padding: "8px 8px", 
+        marginBottom: "12px",
+        boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
       }}>
         <div style={{
           width: "100%",
@@ -63,7 +68,7 @@ const Header = ({
           boxSizing: "border-box",
           justifyContent: "space-between",
           padding: "10px 12px",
-          backgroundColor: "#f3f2f1",
+          backgroundColor: "#ffffff",
           border: "1px solid #e0e0e0",
           fontFamily: "Segoe UI, sans-serif",
         }}>
@@ -183,7 +188,7 @@ const Header = ({
             width: "100%",
             height: "100%",
             backgroundColor: "rgba(0, 0, 0, 0.5)",
-            zIndex: 100,
+            zIndex: 101, // Higher than header
             display: "flex"
           }}
           onClick={toggleSidebar}
@@ -209,7 +214,7 @@ const Header = ({
               alignItems: "center",
               justifyContent: "space-between"
             }}>
-              <h2 style={{ margin: 0, fontSize: "18px" }}>Nordsales</h2>
+              <h2 style={{ margin: 0, fontSize: "18px" }}>Lens</h2>
               <button 
                 onClick={toggleSidebar}
                 style={{
@@ -249,11 +254,11 @@ const Header = ({
                   padding: "10px",
                   borderRadius: "4px",
                   fontWeight: "500",
-                  transition: "background-color 0.2s",
-                  hover: {
-                    backgroundColor: "#f5f5f5"
-                  } 
+                  transition: "background-color 0.2s ease",
+                  backgroundColor: "transparent"
                 }}
+                onMouseEnter={e => { e.currentTarget.style.backgroundColor = "#f5f5f5" }}
+                onMouseLeave={e => { e.currentTarget.style.backgroundColor = "transparent" }}
                 onClick={() => {setShowSidebar(false);}}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -269,11 +274,11 @@ const Header = ({
                   padding: "10px",
                   borderRadius: "4px",
                   fontWeight: "500",
-                  transition: "background-color 0.2s",
-                  hover: {
-                    backgroundColor: "#f5f5f5"
-                  } 
+                  transition: "background-color 0.2s ease",
+                  backgroundColor: "transparent"
                 }}
+                onMouseEnter={e => { e.currentTarget.style.backgroundColor = "#f5f5f5" }}
+                onMouseLeave={e => { e.currentTarget.style.backgroundColor = "transparent" }}
                 onClick={() => {setShowSidebar(false);}}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -289,11 +294,11 @@ const Header = ({
                   padding: "10px",
                   borderRadius: "4px",
                   fontWeight: "500",
-                  transition: "background-color 0.2s",
-                  hover: {
-                    backgroundColor: "#f5f5f5"
-                  } 
+                  transition: "background-color 0.2s ease",
+                  backgroundColor: "transparent"
                 }}
+                onMouseEnter={e => { e.currentTarget.style.backgroundColor = "#f5f5f5" }}
+                onMouseLeave={e => { e.currentTarget.style.backgroundColor = "transparent" }}
                 onClick={() => {setShowSidebar(false);}}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -317,8 +322,11 @@ const Header = ({
                   cursor: isLoggingOut ? "not-allowed" : "pointer",
                   textAlign: "center",
                   position: "relative",
-                  opacity: isLoggingOut ? 0.7 : 1
+                  opacity: isLoggingOut ? 0.7 : 1,
+                  transition: "background-color 0.2s ease"
                 }}
+                onMouseEnter={e => { e.currentTarget.style.backgroundColor = "#f5f5f5" }}
+                onMouseLeave={e => { e.currentTarget.style.backgroundColor = "white" }}
               >
                 {isLoggingOut ? "Logging out..." : "Logout"}
                 {isLoggingOut && (

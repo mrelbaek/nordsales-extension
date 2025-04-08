@@ -2,6 +2,7 @@ import React from 'react';
 import { summarizeActivities, getPluralLabel, calculateDaysSinceLastContact } from '../../utils/activityUtils';
 import { calculateDaysBetween } from '../../utils/dateUtils';
 import AccordionSection from '../common/AccordionSection';
+import InfoIcon from '../common/InfoIcon';
 
 /**
  * Enhanced Statistics component with pill-style metrics
@@ -114,7 +115,18 @@ const Statistics = ({
 
   return (
     <AccordionSection
-      title="Statistics"
+      title={
+        <div style={{ display: "flex", alignItems: "center" }}>
+          <span>Statistics</span>
+          <div style={{ marginLeft: "auto" }}>
+            <InfoIcon 
+              title="Opportunity Statistics" 
+              content="This section provides key metrics about the opportunity, including timelines, activity tracking, and account performance indicators."
+              placement="bottom"
+              />
+            </div>
+        </div>
+      }
       isOpen={isOpen}
       onToggle={onToggle}
       theme="primary"

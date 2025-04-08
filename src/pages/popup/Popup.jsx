@@ -1,5 +1,8 @@
-import React, { useEffect, useState } from "react";
-import { logout, getAccessToken, login, isLoggedIn } from "../../utils/auth.js"; // Import the enhanced logout function
+// This is a modified version of your src/pages/popup/Popup.jsx file
+// Adding a state lock mechanism and fixing race conditions
+
+import React, { useEffect, useState, useRef } from "react";
+import { logout, getAccessToken, login, isLoggedIn } from "../../utils/auth.js";
 import {
   getCurrentOpportunityId,
   fetchOpportunityDetails,
@@ -13,6 +16,7 @@ import Login from "../../components/Login.jsx";
 import OpportunityList from "../../components/OpportunityList";
 import OpportunityDetail from "../../components/OpportunityDetail";
 import Header from "../../components/Header.jsx";
+import DebugButton from "../../components/DebugButton.jsx";
 
 /**
  * Main popup component that manages the application state
@@ -30,11 +34,26 @@ const Popup = () => {
   const [debugInfo, setDebugInfo] = useState(null);
   const [organizationId, setOrganizationId] = useState(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  
+  // Add a state lock to prevent simultaneous state updates causing loops
+  const stateTransitionLock = useRef(false);
+  // Track last opportunity ID to prevent unnecessary transitions
+  const lastOpportunityIdRef = useRef(null);
+  // Add a timer ID reference for debouncing
+  const debounceTimerRef = useRef(null);
 
   // Initialize the app
   useEffect(() => {
     async function initialize() {
       try {
+        // Prevent multiple initializations
+        if (stateTransitionLock.current) {
+          console.log("[Popup] Initialization already in progress, skipping");
+          return;
+        }
+        
+        stateTransitionLock.current = true;
+        
         // Notify service worker that popup is open
         chrome.runtime.sendMessage({ type: "POPUP_OPENED" });
         
@@ -48,22 +67,24 @@ const Popup = () => {
           setOrganizationId(orgId);
           
           if (orgId) {
-            chrome.storage.local.set({  "organizationId": orgId });
-            }
+            chrome.storage.local.set({ "organizationId": orgId });
+          }
 
           if (!orgId) {
             // Wait and retry in 500ms
             await new Promise(resolve => setTimeout(resolve, 500));
             const retryOrgId = await getCurrentOrgId();
             setOrganizationId(retryOrgId);
-            if (retryOrgId) {
+            if (!retryOrgId) {
               setError("Please navigate to your Dynamics CRM environment first to use this extension.");
+              stateTransitionLock.current = false;
               return;
             }
           }
         } catch (orgError) {
           console.warn("Error getting organization ID:", orgError);
           setError("Could not determine your Dynamics CRM organization. Please navigate to Dynamics CRM first.");
+          stateTransitionLock.current = false;
           return;
         }
         
@@ -79,7 +100,12 @@ const Popup = () => {
           try {
             const oppId = await getCurrentOpportunityId();
             console.log("[Popup.jsx] Current opportunity ID:", oppId);
-            setCurrentOpportunityId(oppId);
+            
+            // Only update state if ID actually changed to prevent loops
+            if (oppId !== lastOpportunityIdRef.current) {
+              lastOpportunityIdRef.current = oppId;
+              setCurrentOpportunityId(oppId);
+            }
             
             // Fetch data
             if (oppId) {
@@ -111,13 +137,19 @@ const Popup = () => {
           message: error.message,
           timestamp: new Date().toISOString(),
         });
+      } finally {
+        // Release the lock
+        stateTransitionLock.current = false;
       }
     }
     
     initialize();
     
-    // Set up polling for opportunity ID changes
+    // Set up polling for opportunity ID changes with debouncing
     const storageCheckInterval = setInterval(() => {
+      // Skip check if lock is active
+      if (stateTransitionLock.current) return;
+      
       chrome.storage.local.get(['currentOpportunityId', 'lastUpdated', 'currentOrgId'], (result) => {
         // Check for organization ID changes
         if (result.currentOrgId && result.currentOrgId !== organizationId) {
@@ -126,16 +158,32 @@ const Popup = () => {
         
         if (result.currentOpportunityId && result.lastUpdated) {
           // If the ID is different from what we have, or we don't have one
-          if (result.currentOpportunityId !== currentOpportunityId) {
+          if (result.currentOpportunityId !== lastOpportunityIdRef.current) {
             console.log("[Popup.jsx] Storage poll detected new opportunity ID:", result.currentOpportunityId);
-            setCurrentOpportunityId(result.currentOpportunityId);
-            if (accessToken) {
-              handleFetchOpportunityDetails(accessToken, result.currentOpportunityId);
+            
+            // Clear any existing timer
+            if (debounceTimerRef.current) {
+              clearTimeout(debounceTimerRef.current);
             }
+            
+            // Set a new timer to debounce changes
+            debounceTimerRef.current = setTimeout(() => {
+              // Only proceed if state hasn't changed during timeout
+              if (result.currentOpportunityId !== lastOpportunityIdRef.current) {
+                lastOpportunityIdRef.current = result.currentOpportunityId;
+                setCurrentOpportunityId(result.currentOpportunityId);
+                
+                if (accessToken) {
+                  handleFetchOpportunityDetails(accessToken, result.currentOpportunityId);
+                }
+              }
+              debounceTimerRef.current = null;
+            }, 300); // 300ms debounce time
           }
-        } else if (currentOpportunityId && !result.currentOpportunityId) {
+        } else if (lastOpportunityIdRef.current && !result.currentOpportunityId) {
           // If we had an ID but it's now cleared in storage
           console.log("[Popup.jsx] Opportunity ID cleared in storage");
+          lastOpportunityIdRef.current = null;
           setCurrentOpportunityId(null);
           if (accessToken) {
             handleFetchOpportunities(accessToken);
@@ -148,8 +196,22 @@ const Popup = () => {
     const handleMessage = (message) => {
       console.log("[Popup.jsx] Popup received message:", message.type);
       
+      // Skip message handling if lock is active
+      if (stateTransitionLock.current) {
+        console.log("[Popup.jsx] State transition lock active, deferring message handling");
+        return;
+      }
+      
       if (message.type === "OPPORTUNITY_DETECTED") {
         console.log("[Popup.jsx] Received opportunity ID from content script:", message.opportunityId);
+        
+        // Skip if same ID to prevent loops
+        if (message.opportunityId === lastOpportunityIdRef.current) {
+          console.log("[Popup.jsx] Skipping duplicate opportunity ID update");
+          return;
+        }
+        
+        lastOpportunityIdRef.current = message.opportunityId;
         setCurrentOpportunityId(message.opportunityId);
         
         // Update organization ID if provided
@@ -158,10 +220,19 @@ const Popup = () => {
         }
         
         if (accessToken) {
-          handleFetchOpportunityDetails(accessToken, message.opportunityId);
+          // Debounce the API call
+          if (debounceTimerRef.current) {
+            clearTimeout(debounceTimerRef.current);
+          }
+          
+          debounceTimerRef.current = setTimeout(() => {
+            handleFetchOpportunityDetails(accessToken, message.opportunityId);
+            debounceTimerRef.current = null;
+          }, 300);
         }
       } else if (message.type === "OPPORTUNITY_CLEARED") {
         console.log("[Popup.jsx] Opportunity cleared notification received");
+        lastOpportunityIdRef.current = null;
         setCurrentOpportunityId(null);
         setCurrentOpportunity(null);
         if (accessToken) {
@@ -176,16 +247,13 @@ const Popup = () => {
     return () => {
       chrome.runtime.onMessage.removeListener(handleMessage);
       clearInterval(storageCheckInterval);
+      
+      // Clear any pending timeouts
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
     };
-  }, []);
-
-  // Watch for changes to the current opportunity ID
-  useEffect(() => {
-    if (accessToken && currentOpportunityId) {
-      console.log("[Popup.jsx] Effect triggered: fetching opportunity details");
-      handleFetchOpportunityDetails(accessToken, currentOpportunityId);
-    }
-  }, [currentOpportunityId, accessToken]);
+  }, [accessToken, organizationId]);
 
   // Set up styling for the app container
   useEffect(() => {
@@ -236,6 +304,13 @@ const Popup = () => {
    */
   const handleFetchOpportunityDetails = async (token, oppId) => {
     try {
+      // Prevent concurrent operations
+      if (stateTransitionLock.current) {
+        console.log("[Popup.jsx] State transition in progress, deferring opportunity details fetch");
+        return;
+      }
+      
+      stateTransitionLock.current = true;
       setLoading(true);
       setError(null);
       
@@ -247,6 +322,7 @@ const Popup = () => {
           setAccessToken(null);
           setError("Your session has expired. Please log in again.");
           setLoading(false);
+          stateTransitionLock.current = false;
           return;
         }
         
@@ -289,7 +365,9 @@ const Popup = () => {
     } catch (error) {
       console.error("Error checking login status:", error);
       setError("Failed to verify authentication status. Please try again.");
+    } finally {
       setLoading(false);
+      stateTransitionLock.current = false;
     }
   };
 
@@ -298,6 +376,14 @@ const Popup = () => {
    */
   const handleFetchOpportunities = async (token, userId = null) => {
     try {
+      // Prevent concurrent operations
+      if (stateTransitionLock.current) {
+        console.log("[Popup.jsx] State transition in progress, deferring opportunities fetch");
+        return;
+      }
+      
+      stateTransitionLock.current = true;
+      
       // Call the utility function with all required state setters
       await fetchOpportunitiesWithActivities(
         token, 
@@ -309,6 +395,8 @@ const Popup = () => {
     } catch (error) {
       console.error("Error fetching opportunities:", error);
       setError(`Failed to fetch opportunities list: ${error.message}`);
+    } finally {
+      stateTransitionLock.current = false;
     }
   };
 
@@ -317,6 +405,14 @@ const Popup = () => {
    */
   const handleFetchMyOpenOpportunities = async () => {
     try {
+      // Prevent concurrent operations
+      if (stateTransitionLock.current) {
+        console.log("[Popup.jsx] State transition in progress, deferring my opportunities fetch");
+        return;
+      }
+      
+      stateTransitionLock.current = true;
+      
       // Call the utility function
       await fetchMyOpenOpportunities(
         accessToken,
@@ -330,20 +426,30 @@ const Popup = () => {
     } catch (error) {
       console.error("Error fetching my opportunities:", error);
       setError(`Failed to fetch opportunities list: ${error.message}`);
+    } finally {
+      stateTransitionLock.current = false;
     }
   };
 
   /**
    * Handle login
    */
-
   const handleLogin = async () => {
     try {
+      // Prevent concurrent operations
+      if (stateTransitionLock.current) {
+        console.log("[Popup.jsx] State transition in progress, deferring login");
+        return;
+      }
+      
+      stateTransitionLock.current = true;
+      
       // Check for organization ID first
       if (!organizationId) {
         const orgId = await getCurrentOrgId();
         if (!orgId) {
           setError("Please navigate to your Dynamics CRM environment first to use this extension.");
+          stateTransitionLock.current = false;
           return;
         }
         setOrganizationId(orgId);
@@ -358,8 +464,8 @@ const Popup = () => {
         setAccessToken(token);
         
         // Check if we have an opportunity ID
-        if (currentOpportunityId) {
-          handleFetchOpportunityDetails(token, currentOpportunityId);
+        if (lastOpportunityIdRef.current) {
+          handleFetchOpportunityDetails(token, lastOpportunityIdRef.current);
         } else {
           handleFetchOpportunities(token);
           handleFetchClosedOpportunities(token);
@@ -379,6 +485,8 @@ const Popup = () => {
       console.error("Login preparation error:", error);
       setError(`Login preparation failed: ${error.message}`);
       setLoading(false);
+    } finally {
+      stateTransitionLock.current = false;
     }
   };
 
@@ -387,6 +495,13 @@ const Popup = () => {
    */
   const handleLogout = async () => {
     try {
+      // Prevent concurrent operations
+      if (stateTransitionLock.current || isLoggingOut) {
+        console.log("[Popup.jsx] State transition or logout in progress, deferring logout");
+        return;
+      }
+      
+      stateTransitionLock.current = true;
       setIsLoggingOut(true);
       
       // Call the enhanced logout function with all state setters
@@ -401,6 +516,9 @@ const Popup = () => {
       
       if (result.success) {
         console.log("[Popup.jsx] Logout successful");
+        // Clear opportunity references
+        lastOpportunityIdRef.current = null;
+        setCurrentOpportunityId(null);
       } else {
         console.error("Logout failed:", result.error);
         setError(`Logout failed: ${result.error}`);
@@ -410,21 +528,77 @@ const Popup = () => {
       setError(`An unexpected error occurred during logout: ${error.message}`);
     } finally {
       setIsLoggingOut(false);
+      stateTransitionLock.current = false;
     }
   };
 
   /**
-   * Handle back button click
+   * Handle back button click - carefully reset state to prevent loops
    */
   const handleBackToList = () => {
-    setCurrentOpportunity(null);
-    handleFetchOpportunities(accessToken);
+    // Prevent concurrent operations
+    if (stateTransitionLock.current) {
+      console.log("[Popup.jsx] State transition in progress, deferring back navigation");
+      return;
+    }
+    
+    stateTransitionLock.current = true;
+    
+    try {
+      console.log("[Popup.jsx] Handling back button click");
+      
+      // Clear opportunity ID references first
+      lastOpportunityIdRef.current = null;
+      chrome.storage.local.remove(["currentOpportunityId", "lastUpdated"], () => {
+        console.log("[Popup.jsx] Cleared opportunity ID from storage");
+      });
+      
+      // Clear opportunity details
+      setCurrentOpportunity(null);
+      setCurrentOpportunityId(null);
+      
+      // Fetch opportunities only after state is cleared
+      setTimeout(() => {
+        if (accessToken) {
+          handleFetchOpportunities(accessToken);
+        }
+        stateTransitionLock.current = false;
+      }, 100);
+    } catch (error) {
+      console.error("Error in back navigation:", error);
+      stateTransitionLock.current = false;
+    }
   };
 
   /**
    * Handle opportunity selection
    */
   const handleOpportunitySelect = (opportunityId) => {
+    // Prevent loops - if already on this opportunity, do nothing
+    if (opportunityId === lastOpportunityIdRef.current && currentOpportunity) {
+      console.log("[Popup.jsx] Already showing this opportunity, skipping selection");
+      return;
+    }
+    
+    // Prevent concurrent operations
+    if (stateTransitionLock.current) {
+      console.log("[Popup.jsx] State transition in progress, deferring opportunity selection");
+      return;
+    }
+    
+    console.log("[Popup.jsx] Selecting opportunity:", opportunityId);
+    
+    // Update references and storage
+    lastOpportunityIdRef.current = opportunityId;
+    chrome.storage.local.set({ 
+      currentOpportunityId: opportunityId,
+      lastUpdated: Date.now()
+    });
+    
+    // Update state
+    setCurrentOpportunityId(opportunityId);
+    
+    // Fetch details
     handleFetchOpportunityDetails(accessToken, opportunityId);
   };
 
@@ -452,14 +626,12 @@ const Popup = () => {
       console.log('[Popup] RENDER CONTENT DEBUG:');
       console.log('[Popup] Organization ID:', organizationId);
       console.log('[Popup] Access Token:', !!accessToken);
-      console.log('[Popup] Current Opportunity:', currentOpportunity);
+      console.log('[Popup] Current Opportunity:', currentOpportunity ? currentOpportunity.opportunityid : 'none');
+      console.log('[Popup] Current Opportunity ID:', currentOpportunityId);
+      console.log('[Popup] State Transition Lock:', stateTransitionLock.current);
+      console.log('[Popup] Last Opportunity ID Ref:', lastOpportunityIdRef.current);
       console.log('[Popup] Opportunities Count:', opportunities.length);
       console.log('[Popup] Closed Opportunities Count:', closedOpportunities.length);
-      console.log('[Popup] Opportunities:', JSON.stringify(opportunities.map(o => ({
-        id: o.opportunityid, 
-        name: o.name, 
-        activitiesCount: o.activities?.length || 0
-      })), null, 2));
       
       // Show organization selection message if no org ID is detected
       if (!organizationId) {
@@ -493,7 +665,10 @@ const Popup = () => {
         return <Login onLogin={handleLogin} />;
       }
     
-      if (currentOpportunity) {
+      // Important change: Check both currentOpportunityId and currentOpportunity
+      // Only render opportunity detail when we have both
+      if (currentOpportunityId && currentOpportunity) {
+        console.log('[Popup] Rendering opportunity detail view');
         return (
           <OpportunityDetail 
             opportunity={currentOpportunity}
@@ -503,11 +678,12 @@ const Popup = () => {
             toggleAutoOpen={toggleAutoOpen}
             autoOpen={autoOpen}
             onLogout={handleLogout}
-            isLoggingOutgOut={isLoggingOut}
+            isLoggingOut={isLoggingOut}
           />
         );
       }
     
+      console.log('[Popup] Rendering opportunity list view');
       return (
         <OpportunityList 
           opportunities={(() => {
@@ -519,7 +695,6 @@ const Popup = () => {
               
               // Map each opportunity with proper safety checks
               return opportunities.map((opp) => {
-                console.log(`[Popup.jsx] Processing opportunity:`, opp);
                 if (!opp) {
                   console.warn("Received undefined opportunity object");
                   return {
@@ -597,6 +772,8 @@ const Popup = () => {
           <div>Org ID: {organizationId || 'Not detected'}</div>
           <div>Token: {accessToken ? 'Yes' : 'No'}</div>
           <div>Opp ID: {currentOpportunityId || 'None'}</div>
+          <div>Last Opp Ref: {lastOpportunityIdRef.current || 'None'}</div>
+          <div>Lock: {stateTransitionLock.current ? 'Active' : 'Inactive'}</div>
           <div>Opportunities: {opportunities.length}</div>
           <div>Closed Opportunities: {closedOpportunities.length}</div>
         </details>

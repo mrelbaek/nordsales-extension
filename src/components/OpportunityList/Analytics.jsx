@@ -101,8 +101,8 @@ const ListAnalytics = ({ opportunities = [], closedOpportunities = [], isOpen, o
         // Create background colors array - use different colors based on status
         const backgroundColors = sortedOpportunities.map(opp => {
           // Won = green, Lost = red, Default = gray
-          if (opp.statecode === 1) return 'rgba(76, 175, 80, 0.7)'; // Green for won
-          if (opp.statecode === 2) return 'rgba(244, 67, 54, 0.7)'; // Red for lost
+          if (opp.statecode === 1) return 'rgba(197, 253, 212, 0.7)'; // Green for won
+          if (opp.statecode === 2) return 'rgba(252, 210, 197, 0.7)'; // Red for lost
           return 'rgba(189, 189, 189, 0.7)'; // Grey for others
         });
         
@@ -304,7 +304,7 @@ const ListAnalytics = ({ opportunities = [], closedOpportunities = [], isOpen, o
         }}>
           <div style={{ fontSize: "13px", color: "#666" }}>Open Opportunities</div>
           <div style={{ 
-            fontSize: "20px", 
+            fontSize: "16px", 
             fontWeight: "bold",
             marginLeft: "10px"
           }}>
@@ -325,7 +325,7 @@ const ListAnalytics = ({ opportunities = [], closedOpportunities = [], isOpen, o
         }}>
           <div style={{ fontSize: "13px", color: "#666" }}>Closing in 30 Days</div>
           <div style={{ 
-            fontSize: "20px", 
+            fontSize: "16px", 
             fontWeight: "bold",
             marginLeft: "10px" 
           }}>

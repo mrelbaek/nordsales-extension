@@ -54,15 +54,15 @@ const OpportunityDetail = ({
         isLoggingOut={isLoggingOut}
       />
 
-      {/* Opportunity Name 
+      {/* Opportunity Name */}
       <div>
-        <h3 style={{
-          padding: "12px 16px 0px 16px",
+        <h4 style={{
+          padding: "0px 16px 0px 16px",
           display: "flex",
           color: "#1f2223",
           fontSize: "14px",
           marginBottom: "2px"
-        }}>{opportunity.name}</h3>
+        }}>{opportunity.name}</h4>
         
         {opportunity.createdon && (
           <div style={{ 
@@ -73,11 +73,11 @@ const OpportunityDetail = ({
             fontWeight: "500",
             color: "#5f646a"
           }}>
-            <p>Created On:&nbsp;</p> {new Date(opportunity.createdon).toLocaleDateString()}
+            <p>Created on:&nbsp;</p> {new Date(opportunity.createdon).toLocaleDateString()}
           </div>
         )}
       </div>
-      */}
+
       {/* Main Content Area - Scrollable */}
       <div style={{ flex: 1, overflow: "auto", padding: "0 16px 16px 16px" }}>
       

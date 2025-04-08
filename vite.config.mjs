@@ -54,4 +54,8 @@ export default defineConfig({
     },
     cors: true,
   },
+  define: {
+    __BUILD_DATE__: JSON.stringify(new Date().toISOString()),
+    __ENV__: JSON.stringify(process.env.NODE_ENV || 'development'),
+  }
 });

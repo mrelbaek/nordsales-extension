@@ -55,14 +55,14 @@ const WonLostChart = ({ closedOpportunities = [] }) => {
           {
             label: 'Won',
             data: Array(12).fill(0),
-            backgroundColor: 'rgba(76, 175, 80, 0.7)',
+            backgroundColor: 'rgba(93, 182, 117, 0.7)',
             borderRadius: 4,
             stack: 'stack0'
           },
           {
             label: 'Lost',
             data: Array(12).fill(0),
-            backgroundColor: 'rgba(244, 67, 54, 0.7)',
+            backgroundColor: 'rgba(199, 117, 93, 0.7)',
             borderRadius: 4,
             stack: 'stack0'
           }
@@ -130,13 +130,13 @@ const WonLostChart = ({ closedOpportunities = [] }) => {
         {
           label: 'Won',
           data: wonByMonth,
-          backgroundColor: 'rgba(76, 175, 80, 0.7)',
+          backgroundColor: 'rgba(93, 182, 117, 0.7)',
           borderRadius: 4
         },
         {
           label: 'Lost',
           data: lostByMonth,
-          backgroundColor: 'rgba(244, 67, 54, 0.7)',
+          backgroundColor: 'rgba(199, 117, 93, 0.7)',
           borderRadius: 4
         }
       ]
@@ -237,7 +237,7 @@ const WonLostChart = ({ closedOpportunities = [] }) => {
   return (
     <div style={{ 
       padding: "16px", 
-      backgroundColor: "#f5f5f5", 
+      backgroundColor: "#fff", 
       borderRadius: "8px",
       boxShadow: "0 1px 2px rgba(0,0,0,0.05)"
     }}>

@@ -7,6 +7,7 @@ import AccordionSection from '../common/AccordionSection';
 import WinRate from './WinRate';
 import UserActivityChart from './UserActivityChart';
 import WonLostChart from './WonLostChart';
+import { PiIntersect } from "react-icons/pi";
 
 /**
  * Opportunity list component

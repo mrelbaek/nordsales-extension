@@ -77,7 +77,7 @@ const Analytics = ({ activities = [], closedOpportunities = [], opportunity, isO
             description: opp.description || '',
             value: opp.estimatedvalue || opp.totalamount || 0,
             status: opp.statecode === 0 ? 'Open' : opp.statecode === 1 ? 'Won' : 'Lost',
-            id: opp.opportunityid,
+            // id: opp.opportunityid,//
             daysOpen: Math.floor((new Date(opp.actualclosedate) - new Date(opp.createdon)) / (1000 * 60 * 60 * 24)),
             url: url
           };
@@ -93,7 +93,7 @@ const Analytics = ({ activities = [], closedOpportunities = [], opportunity, isO
         const data = [...times];
         
         // Create background colors array (gray with transparency)
-        const backgroundColors = Array(times.length).fill('rgba(189, 189, 189, 0.7)'); // Grey with transparency
+        const backgroundColors = Array(times.length).fill('rgba(163, 163, 163, 0.7)'); // Grey with transparency
         
         // Add current opportunity data and tooltip
         let updatedTooltips = [...tooltips];
@@ -101,7 +101,7 @@ const Analytics = ({ activities = [], closedOpportunities = [], opportunity, isO
         if (opportunity && opportunity.createdon) {
           labels.unshift('Current');
           data.unshift(currentOpportunityDays);
-          backgroundColors.unshift('rgba(196, 228, 86, 0.8)'); // Lime green with transparency
+          backgroundColors.unshift('rgba(52, 52, 52, 0.7)'); // Lime green with transparency
           
           // Add current opportunity tooltip
           const currentUrl = await getOpportunityUrl(opportunity.opportunityid);
@@ -269,10 +269,7 @@ const Analytics = ({ activities = [], closedOpportunities = [], opportunity, isO
   const averageLinePlugin = {
     id: 'averageLine',
     afterDraw: (chart) => {
-      // Force the line to be drawn at the calculated average
-      // regardless of state synchronization issues
-      const avgValue = averageClosingTime; // Use the value we know is correct
-      
+      const avgValue = averageClosingTime; 
       const ctx = chart.ctx;
       const yAxis = chart.scales.y;
       const xAxis = chart.scales.x;
@@ -284,8 +281,8 @@ const Analytics = ({ activities = [], closedOpportunities = [], opportunity, isO
         ctx.beginPath();
         ctx.moveTo(xAxis.left, yPos);
         ctx.lineTo(xAxis.right, yPos);
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = '#c4e456';
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = '#2684ff';
         ctx.stroke();
         ctx.restore();
         
@@ -298,53 +295,10 @@ const Analytics = ({ activities = [], closedOpportunities = [], opportunity, isO
 
   return (
     <AccordionSection
-      title="Analytics"
+      title="Sales Cycle"
       isOpen={isOpen}
       onToggle={onToggle}
     >
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "20px" }}>
-        {/* Days Since Last Contact */}
-        <div style={{ 
-          padding: "16px", 
-          borderRadius: "8px",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center"
-        }}>
-          <div style={{ fontSize: "12px", color: "#666", marginBottom: "8px" }}>Days Since Last Contact</div>
-          <div style={{ 
-            fontSize: "28px", 
-            fontWeight: "bold",
-            marginBottom: "4px"
-          }}>
-            {calculateDaysSinceLastContact(activities)?.days || 0}
-          </div>
-          <div style={{ fontSize: "12px", color: "#666" }}>days</div>
-          <div style={{ fontSize: "12px", color: "#666", marginTop: "4px" }}>
-            {calculateDaysSinceLastContact(activities)?.days > 30 ? 
-              "30 avg" : "35 avg"}
-          </div>
-        </div>
-        
-        {/* Average Closing Time */}
-        <div style={{ 
-          padding: "16px", 
-          borderRadius: "8px",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center"
-        }}>
-          <div style={{ fontSize: "12px", color: "#666", marginBottom: "8px" }}>Avg. Closing Time</div>
-          <div style={{ 
-            fontSize: "28px", 
-            fontWeight: "bold",
-            marginBottom: "4px"
-          }}>
-            {averageClosingTime || 0}
-          </div>
-          <div style={{ fontSize: "12px", color: "#666" }}>days</div>
-        </div>
-      </div>
       
       {/* Closing Time Chart */}
       <div style={{ 
@@ -352,11 +306,12 @@ const Analytics = ({ activities = [], closedOpportunities = [], opportunity, isO
         borderRadius: "8px",
         marginBottom: "16px"
       }}>
-        <div style={{ fontSize: "14px", color: "#333", marginBottom: "16px" }}>
-          Closing Time - Last 7 Closed Opportunities
+        <div style={{ fontSize: "12px", color: "#666", marginBottom: "16px" }}>
+          Current vs Last 7 Closed Opportunities
         </div>
         
         <div style={{ height: 200, position: 'relative' }}>
+        {chartData.datasets && chartData.datasets[0] && chartData.datasets[0].data && chartData.datasets[0].data.length > 0 ? (
           <Bar 
             ref={chartRef}
             data={chartData} 
@@ -364,6 +319,18 @@ const Analytics = ({ activities = [], closedOpportunities = [], opportunity, isO
             plugins={[averageLinePlugin]}
             onClick={handleBarClick}
           />
+        ) : (
+          <div style={{ 
+            height: '100%', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            color: '#888',
+            fontStyle: 'italic'
+          }}>
+            No closed opportunity data available
+          </div>
+          )}
         </div>
         
         {/* Average indicator */}
@@ -377,7 +344,7 @@ const Analytics = ({ activities = [], closedOpportunities = [], opportunity, isO
           <div style={{ 
             width: "16px", 
             height: "2px", 
-            backgroundColor: "#c4e456",
+            backgroundColor: "#2684ff",
             marginRight: "6px"
           }}></div>
           <div style={{ fontSize: "12px", color: "#666" }}>

@@ -64,7 +64,7 @@ const BasicInfo = ({ opportunity, isOpen, onToggle }) => {
       
       {opportunity.createdon && (
         <div style={{ marginBottom: "8px" }}>
-          <strong>Created On:</strong> {new Date(opportunity.createdon).toLocaleDateString()}
+          <strong>Created on:</strong> {new Date(opportunity.createdon).toLocaleDateString()}
         </div>
       )}
       

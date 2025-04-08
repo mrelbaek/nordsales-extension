@@ -82,9 +82,9 @@ const SalesCycleChart = ({ closedOpportunities = [] }) => {
         // Create background colors array - use different colors based on status
         const backgroundColors = sortedOpportunities.map(opp => {
           // Won = green, Lost = red, Default = gray
-          if (opp.statecode === 1) return 'rgba(202, 238, 90, 0.7)'; // Green for won
-          if (opp.statecode === 2) return 'rgba(124, 124, 129, 0.7)'; // Red for lost
-          return 'rgba(189, 189, 189, 0.7)'; // Grey for others
+          if (opp.statecode === 1) return 'rgba(93, 182, 117, 0.7)'; // Green for won
+          if (opp.statecode === 2) return 'rgba(199, 117, 93, 0.7)'; // Red for lost
+          return 'rgba(229, 229, 229, 0.7)'; // Grey for others
         });
         
         setTooltipData(tooltips);
@@ -235,7 +235,7 @@ const SalesCycleChart = ({ closedOpportunities = [] }) => {
         ctx.moveTo(xAxis.left, yPos);
         ctx.lineTo(xAxis.right, yPos);
         ctx.lineWidth = 1;
-        ctx.strokeStyle = '#818183';
+        ctx.strokeStyle = '#2684ff';
         ctx.stroke();
         ctx.restore();
       }
@@ -289,7 +289,7 @@ const SalesCycleChart = ({ closedOpportunities = [] }) => {
           <div style={{ 
             width: "16px", 
             height: "2px", 
-            backgroundColor: "#818183",
+            backgroundColor: "#2684ff",
             marginRight: "6px"
           }}></div>
           <div style={{ fontSize: "12px", color: "#666" }}>

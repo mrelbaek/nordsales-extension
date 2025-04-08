@@ -10,6 +10,7 @@ import {
 } from 'chart.js';
 import { Bar } from 'react-chartjs-2';
 import { fetchUserActivitiesForLastYear } from '../../utils/api';
+import { getActivityDate } from '../../utils/activityUtils';
 
 // Register ChartJS components
 ChartJS.register(
@@ -85,6 +86,47 @@ const UserActivityChart = ({ accessToken }) => {
   };
 
   /**
+   * Get the appropriate date for an activity, matching activityUtils.jsx logic
+   * @param {Object} activity - Activity object
+   * @returns {Date|null} The appropriate date for the activity
+   */
+  const getAppropriateActivityDate = (activity) => {
+    if (!activity) return null;
+    
+    // Helper to safely parse dates with timezone handling
+    const parseDate = (dateString) => {
+      if (!dateString) return null;
+      
+      try {
+        // Create date object and verify it's valid
+        const date = new Date(dateString);
+        return isNaN(date.getTime()) ? null : date;
+      } catch (e) {
+        console.warn("Error parsing date:", dateString, e);
+        return null;
+      }
+    };
+
+    // Parse all dates
+    const created = parseDate(activity.createdon);
+    const scheduled = parseDate(activity.scheduledstart);
+    const actualstart = parseDate(activity.actualstart);
+    
+    // For appointments, prefer actualstart, then scheduledstart, then createdon
+    if (activity.activitytypecode?.toLowerCase() === 'appointment' || activity.activitytypecode?.toLowerCase() === 'meeting') {
+      return actualstart || scheduled || created;
+    }
+
+    // For tasks, prefer scheduledstart, then actualstart, then createdon
+    if (activity.activitytypecode?.toLowerCase() === 'task') {
+      return scheduled || actualstart || created;
+    }
+  
+    // Default to createdon for other activity types
+    return created;
+  };
+
+  /**
    * Process activities data into chart format
    * @param {Array} activities - Raw activities from API
    * @param {Array} monthLabels - Month labels (e.g., "Apr 2024")
@@ -109,9 +151,11 @@ const UserActivityChart = ({ accessToken }) => {
     const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     
     activities.forEach(activity => {
-      if (!activity.createdon) return;
+      // Use our consistent date logic instead of just createdon
+      const activityDate = getAppropriateActivityDate(activity);
       
-      const activityDate = new Date(activity.createdon);
+      if (!activityDate) return;
+      
       const monthYear = `${monthNames[activityDate.getMonth()]} ${activityDate.getFullYear()}`;
       const monthIndex = monthLabels.indexOf(monthYear);
       
@@ -193,7 +237,7 @@ const UserActivityChart = ({ accessToken }) => {
       <div style={{ 
         padding: "20px", 
         textAlign: "center", 
-        backgroundColor: "#f5f5f5", 
+        backgroundColor: "#fff", 
         borderRadius: "8px",
         height: "300px",
         display: "flex",
@@ -210,7 +254,7 @@ const UserActivityChart = ({ accessToken }) => {
       <div style={{ 
         padding: "20px", 
         textAlign: "center", 
-        backgroundColor: "#fff0f0", 
+        backgroundColor: "#fff", 
         color: "#d32f2f",
         borderRadius: "8px",
         border: "1px solid #ffcdd2",
@@ -227,7 +271,7 @@ const UserActivityChart = ({ accessToken }) => {
   return (
     <div style={{ 
       padding: "16px", 
-      backgroundColor: "#f5f5f5", 
+      backgroundColor: "#fff", 
       borderRadius: "8px",
       boxShadow: "0 1px 2px rgba(0,0,0,0.05)"
     }}>

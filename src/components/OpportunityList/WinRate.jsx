@@ -241,7 +241,7 @@ const WinRate = ({ closedOpportunities = [] }) => {
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
           <div style={{ fontSize: "13px", color: "#666" }}>L3M Win Rate</div>
-          <div style={{ fontSize: "14px", fontWeight: "bold" }}>
+          <div style={{ fontSize: "16px", fontWeight: "bold" }}>
             {l3mWinRate}%
           </div>
         </div>
@@ -296,7 +296,7 @@ const WinRate = ({ closedOpportunities = [] }) => {
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
           <div style={{ fontSize: "13px", color: "#666" }}>L12M Win Rate</div>
-          <div style={{ fontSize: "14px", fontWeight: "bold", display: "flex", alignItems: "center" }}>
+          <div style={{ fontSize: "16px", fontWeight: "bold", display: "flex", alignItems: "center" }}>
             {l12mWinRate}%
           </div>
         </div>

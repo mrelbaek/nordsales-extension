@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { PiGear, PiList, PiX, PiArrowsClockwise, PiUser, PiChartBar, PiHouse, PiSignOut } from "react-icons/pi";
+import DebugButton from './DebugButton';
 
 /**
  * Creates a header element with consistent styling and sticky positioning
@@ -91,6 +92,9 @@ const Header = ({
             </span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            {/* Add the DebugButton component here */}
+            <DebugButton />
+            
             <button 
               onClick={onFetchMyOpenOpportunities}
               style={{

@@ -40,9 +40,17 @@ const Calendar = ({ activities = [], isOpen, onToggle }) => {
     setCalendarYear(newYear);
   };
 
+  // Function to check if a date matches the selected date
+  const isSelectedDate = (year, month, day) => {
+    if (!selectedDate || !day) return false;
+    return selectedDate.getDate() === day &&
+           selectedDate.getMonth() === month &&
+           selectedDate.getFullYear() === year;
+  };
+
   return (
     <AccordionSection
-      title="Entries"
+      title="Activities"
       isOpen={isOpen}
       onToggle={onToggle}
     >
@@ -102,35 +110,43 @@ const Calendar = ({ activities = [], isOpen, onToggle }) => {
             gap: "4px",
             marginBottom: "4px"
           }}>
-            {week.map((day, dayIndex) => (
-              <div key={dayIndex} style={{ 
-                height: "30px",
-                textAlign: "center",
-                position: "relative",
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-                fontSize: "14px",
-                backgroundColor: day?.isToday ? "#e0ff82" : "transparent",
-                color: day?.isToday ? "#1f2223" : day?.day ? "black" : "#ccc",
-                cursor: day?.activities.length > 0 ? "pointer" : "default"
-              }}
-              onClick={() => day?.activities.length > 0 && setSelectedDate(new Date(calendarYear, calendarMonth, day.day))}
-              >
-                {day?.day}
-                {day?.activities.length > 0 && (
-                  <span style={{ 
-                    position: "absolute", 
-                    bottom: "-2px", 
-                    width: "6px", 
-                    height: "6px", 
-                    borderRadius: "50%", 
-                    border: "1px solid #1f2223",
-                    backgroundColor: "#e0ff82"
-                  }}></span>
-                )}
-              </div>
-            ))}
+            {week.map((day, dayIndex) => {
+              // Check if this day is the selected date
+              const isSelected = isSelectedDate(calendarYear, calendarMonth, day?.day);
+              
+              return (
+                <div key={dayIndex} style={{ 
+                  height: "30px",
+                  textAlign: "center",
+                  position: "relative",
+                  display: "flex",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  fontSize: "14px",
+                  border: day?.isToday ? "2px solid #ff8f6b" : "none",
+                  backgroundColor: isSelected ? "#ff8f6b" : "transparent", // Highlight selected date
+                  color: isSelected ? "white" : day?.isToday ? "#1f2223" : day?.day ? "black" : "#ccc", // White text on selected date
+                  cursor: day?.activities.length > 0 ? "pointer" : "default",
+                  boxSizing: "border-box",
+                  fontWeight: isSelected ? "bold" : "normal"
+                }}
+                onClick={() => day?.activities.length > 0 && setSelectedDate(new Date(calendarYear, calendarMonth, day.day))}
+                >
+                  {day?.day}
+                  {day?.activities.length > 0 && (
+                    <span style={{ 
+                      position: "absolute", 
+                      bottom: "-2px", 
+                      width: "6px", 
+                      height: "6px", 
+                      borderRadius: "50%", 
+                      border: "1px solid #1f2223",
+                      backgroundColor: isSelected ? "white" : "#ff8f6b" // Change dot color for selected dates
+                    }}></span>
+                  )}
+                </div>
+              );
+            })}
           </div>
         ))}
       </div>

@@ -1,8 +1,8 @@
 // This is a modified version of your src/pages/popup/Popup.jsx file
-// Adding a state lock mechanism and fixing race conditions
+// Adding Supabase authentication integration and fixing duplicate state declarations
 
 import React, { useEffect, useState, useRef } from "react";
-import { logout, getAccessToken, login, isLoggedIn } from "../../utils/auth.js";
+import { login, logout, isLoggedIn, getCurrentUser } from "../../utils/auth.js";
 import {
   getCurrentOpportunityId,
   fetchOpportunityDetails,
@@ -17,30 +17,76 @@ import OpportunityList from "../../components/OpportunityList";
 import OpportunityDetail from "../../components/OpportunityDetail";
 import Header from "../../components/Header.jsx";
 import DebugButton from "../../components/DebugButton.jsx";
+import { getSubscriptionStatus, hasFeatureAccess } from "../../utils/subscriptions.js";
+import { checkSupabaseConnection, supabase } from "../../utils/supabase.js";
 
 /**
  * Main popup component that manages the application state
  */
 const Popup = () => {
+  // Authentication & user states
   const [accessToken, setAccessToken] = useState(null);
+  const [user, setUser] = useState(null);
+  const [subscription, setSubscription] = useState({
+    status: 'free',
+    isActive: true
+  });
+  
+  // Opportunity & data states
   const [opportunities, setOpportunities] = useState([]);
   const [currentOpportunityId, setCurrentOpportunityId] = useState(null);
   const [currentOpportunity, setCurrentOpportunity] = useState(null);
+  const [activities, setActivities] = useState([]);
+  const [closedOpportunities, setClosedOpportunities] = useState([]);
+  
+  // UI states
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [autoOpen, setAutoOpen] = useState(true);
-  const [activities, setActivities] = useState([]);
-  const [closedOpportunities, setClosedOpportunities] = useState([]);
   const [debugInfo, setDebugInfo] = useState(null);
   const [organizationId, setOrganizationId] = useState(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   
-  // Add a state lock to prevent simultaneous state updates causing loops
+  // Refs for state management
   const stateTransitionLock = useRef(false);
-  // Track last opportunity ID to prevent unnecessary transitions
   const lastOpportunityIdRef = useRef(null);
-  // Add a timer ID reference for debouncing
   const debounceTimerRef = useRef(null);
+
+  // Initialize subscription information
+  const initializeSubscriptions = async (userData) => {
+    try {
+      // Check if we have user data with email
+      if (!userData || !userData.email) {
+        console.warn("[Popup] Cannot initialize subscriptions: Missing user email");
+        setSubscription({
+          status: 'free',
+          isActive: true
+        });
+        return;
+      }
+      
+      console.log("[Popup] Initializing subscription for email:", userData.email);
+      
+      // Make sure to pass the email directly
+      const subStatus = await getSubscriptionStatus(userData.email);
+      setSubscription(subStatus);
+      
+      console.log("[Popup] Subscription initialized:", subStatus.status);
+      
+      // Store subscription info locally
+      chrome.storage.local.set({ 
+        subscriptionStatus: subStatus.status,
+        subscriptionEndDate: subStatus.endDate
+      });
+    } catch (error) {
+      console.error("Error initializing subscriptions:", error);
+      // Set a default free subscription as fallback
+      setSubscription({
+        status: 'free',
+        isActive: true
+      });
+    }
+  };
 
   // Initialize the app
   useEffect(() => {
@@ -53,6 +99,13 @@ const Popup = () => {
         }
         
         stateTransitionLock.current = true;
+        
+        // Check Supabase connection
+        const supabaseStatus = await checkSupabaseConnection();
+        if (!supabaseStatus.connected) {
+          console.warn("Supabase connection issue:", supabaseStatus.error);
+          // Continue with limited functionality
+        }
         
         // Notify service worker that popup is open
         chrome.runtime.sendMessage({ type: "POPUP_OPENED" });
@@ -88,14 +141,32 @@ const Popup = () => {
           return;
         }
         
-        // Get the token
-        const token = await getAccessToken();
-        console.log("[Popup.jsx] Got access token:", token ? "yes" : "no");
-
-        setAccessToken(token);
-        console.log("[Popup.jsx] Access token used in utils:", token?.substring(0, 30));
+        // Check if already logged in
+        const loggedIn = await isLoggedIn();
         
-        if (token) {
+        if (loggedIn) {
+          // Get stored token
+          const { accessToken } = await chrome.storage.local.get(["accessToken"]);
+          setAccessToken(accessToken);
+          
+          // Get user information
+          const userData = await getCurrentUser();
+          console.log("[Popup] Retrieved user data:", userData);
+          setUser(userData);
+          
+          // Initialize subscription status
+          if (userData && userData.email) {
+            await initializeSubscriptions(userData);
+          } else {
+            console.warn("[Popup] No user email available for subscription check");
+            setSubscription({
+              status: 'free',
+              isActive: true
+            });
+          }
+          
+          console.log("[Popup.jsx] Got access token:", accessToken ? "yes" : "no");
+          
           // Try to get current opportunity ID
           try {
             const oppId = await getCurrentOpportunityId();
@@ -109,20 +180,20 @@ const Popup = () => {
             
             // Fetch data
             if (oppId) {
-              await handleFetchOpportunityDetails(token, oppId);
+              await handleFetchOpportunityDetails(accessToken, oppId);
             } else {
-              await handleFetchOpportunities(token);
+              await handleFetchOpportunities(accessToken);
             }
             
             // Also fetch closed opportunities for analytics
-            await handleFetchClosedOpportunities(token);
+            await handleFetchClosedOpportunities(accessToken);
           } catch (idError) {
             console.warn("Error getting opportunity ID:", idError);
-            await handleFetchOpportunities(token);
-            await handleFetchClosedOpportunities(token);
+            await handleFetchOpportunities(accessToken);
+            await handleFetchClosedOpportunities(accessToken);
           }
         } else {
-          console.log("[Popup.jsx] No valid token found, user needs to log in.");
+          console.log("[Popup.jsx] No valid login found, user needs to log in.");
         }
   
         // Get the auto-open preference
@@ -258,7 +329,7 @@ const Popup = () => {
   // Set up styling for the app container
   useEffect(() => {
     // Set title
-    document.title = "NordSales Extension";
+    document.title = "Lens";
     
     // Apply styles to make it look like a proper window
     const rootStyle = document.documentElement.style;
@@ -320,6 +391,7 @@ const Popup = () => {
           // Token is invalid, show login screen
           console.log("[Popup.jsx] Token invalid or expired, clearing token state");
           setAccessToken(null);
+          setUser(null);
           setError("Your session has expired. Please log in again.");
           setLoading(false);
           stateTransitionLock.current = false;
@@ -352,7 +424,8 @@ const Popup = () => {
               setCurrentOpportunity,
               setActivities,
               null, // Don't set error yet
-              setLoading
+              setLoading,
+              setUser // Add the user state setter
             );
             
             setError("Your session has expired. Please log in again.");
@@ -405,34 +478,40 @@ const Popup = () => {
    */
   const handleFetchMyOpenOpportunities = async () => {
     try {
-      // Prevent concurrent operations
       if (stateTransitionLock.current) {
         console.log("[Popup.jsx] State transition in progress, deferring my opportunities fetch");
         return;
       }
-      
+  
       stateTransitionLock.current = true;
-      
-      // Call the utility function
-      await fetchMyOpenOpportunities(
-        accessToken,
-        setLoading,
-        setError,
-        setOpportunities
-      );
-      
-      // Also refresh closed opportunities
+  
+      // Fetch opportunities
+      await fetchMyOpenOpportunities(accessToken, setLoading, setError, setOpportunities);
       await handleFetchClosedOpportunities(accessToken);
+  
+      // 🔄 Refetch subscription status
+      const {
+        data: { user },
+        error
+      } = await supabase.auth.getUser();
+  
+      if (error || !user?.email) {
+        throw new Error("Unable to get user email");
+      }
+  
+      const status = await getSubscriptionStatus(user.email);
+      console.log('[Popup.jsx] Refreshed subscription:', status);
+      setSubscriptionStatus(status.status);
     } catch (error) {
-      console.error("Error fetching my opportunities:", error);
-      setError(`Failed to fetch opportunities list: ${error.message}`);
+      console.error("Error fetching my opportunities or subscription:", error);
+      setError(`Failed to fetch opportunities or subscription: ${error.message}`);
     } finally {
       stateTransitionLock.current = false;
     }
   };
 
   /**
-   * Handle login
+   * Handle login with integrated Supabase and Dynamics
    */
   const handleLogin = async () => {
     try {
@@ -459,19 +538,33 @@ const Popup = () => {
       setLoading(true);
       
       try {
-        const token = await login();
+        // Integrated login that handles both Dynamics and Supabase
+        const result = await login();
+        
+        if (!result.success) {
+          throw new Error(result.error?.message || "Login failed");
+        }
+        
         console.log("[Popup.jsx] Login successful, got token");
-        setAccessToken(token);
+        setAccessToken(result.token);
+        
+        // Set user data from login result
+        if (result.user) {
+          setUser(result.user);
+          await initializeSubscriptions(result.user);
+        } else {
+          console.warn("[Popup.jsx] No user data in login result");
+        }
         
         // Check if we have an opportunity ID
         if (lastOpportunityIdRef.current) {
-          handleFetchOpportunityDetails(token, lastOpportunityIdRef.current);
+          handleFetchOpportunityDetails(result.token, lastOpportunityIdRef.current);
         } else {
-          handleFetchOpportunities(token);
-          handleFetchClosedOpportunities(token);
+          handleFetchOpportunities(result.token);
+          handleFetchClosedOpportunities(result.token);
         }
       } catch (loginError) {
-        if (loginError.message.includes("did not approve")) {
+        if (loginError.message && loginError.message.includes("did not approve")) {
           console.log("[Popup.jsx] User cancelled the login dialog");
           setError("Authentication cancelled. Please try again.");
         } else {
@@ -511,7 +604,8 @@ const Popup = () => {
         setCurrentOpportunity,
         setActivities,
         setError,
-        null // Don't pass setLoading as we're using setIsLoggingOut instead
+        null, // Don't pass setLoading as we're using setIsLoggingOut instead
+        setUser // Add the user state setter
       );
       
       if (result.success) {
@@ -519,6 +613,12 @@ const Popup = () => {
         // Clear opportunity references
         lastOpportunityIdRef.current = null;
         setCurrentOpportunityId(null);
+        
+        // Reset subscription status
+        setSubscription({
+          status: 'free',
+          isActive: true
+        });
       } else {
         console.error("Logout failed:", result.error);
         setError(`Logout failed: ${result.error}`);
@@ -618,6 +718,13 @@ const Popup = () => {
   };
 
   /**
+   * Check if feature is available for current subscription
+   */
+  const canUseFeature = (featureName) => {
+    return hasFeatureAccess(featureName, subscription?.status || 'free');
+  };
+
+  /**
    * Render appropriate content based on app state
    */
   const renderContent = () => {
@@ -626,6 +733,8 @@ const Popup = () => {
       console.log('[Popup] RENDER CONTENT DEBUG:');
       console.log('[Popup] Organization ID:', organizationId);
       console.log('[Popup] Access Token:', !!accessToken);
+      console.log('[Popup] User:', user?.email || 'not logged in');
+      console.log('[Popup] Subscription:', subscription?.status || 'none');
       console.log('[Popup] Current Opportunity:', currentOpportunity ? currentOpportunity.opportunityid : 'none');
       console.log('[Popup] Current Opportunity ID:', currentOpportunityId);
       console.log('[Popup] State Transition Lock:', stateTransitionLock.current);
@@ -679,6 +788,9 @@ const Popup = () => {
             autoOpen={autoOpen}
             onLogout={handleLogout}
             isLoggingOut={isLoggingOut}
+            subscription={subscription}
+            canUseFeature={canUseFeature}
+            user={user}
           />
         );
       }
@@ -732,6 +844,9 @@ const Popup = () => {
           autoOpen={autoOpen}
           accessToken={accessToken}
           onFetchMyOpenOpportunities={handleFetchMyOpenOpportunities}
+          subscription={subscription}
+          canUseFeature={canUseFeature}
+          user={user}
         />
       );
     } catch (renderError) {
@@ -771,6 +886,8 @@ const Popup = () => {
           <summary>Debug</summary>
           <div>Org ID: {organizationId || 'Not detected'}</div>
           <div>Token: {accessToken ? 'Yes' : 'No'}</div>
+          <div>User: {user?.email || 'None'}</div>
+          <div>Subscription: {subscription?.status || 'None'}</div>
           <div>Opp ID: {currentOpportunityId || 'None'}</div>
           <div>Last Opp Ref: {lastOpportunityIdRef.current || 'None'}</div>
           <div>Lock: {stateTransitionLock.current ? 'Active' : 'Inactive'}</div>

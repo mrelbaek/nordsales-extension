@@ -1,48 +1,120 @@
-// Authentication constants for Dynamics CRM
-const CLIENT_ID = "f71910da-e7e2-4deb-b99f-cc00eeddb1d0"; // Your registered app's client ID
-const REDIRECT_URI = chrome.identity.getRedirectURL();
-const COMMON_AUTHORITY = "https://login.microsoftonline.com/common"; // Use common endpoint instead of tenant-specific
+import { supabase } from './supabase';
 
+// Dynamics CRM Authentication Constants
+const CLIENT_ID = "f71910da-e7e2-4deb-b99f-cc00eeddb1d0";
+const REDIRECT_URI = chrome.identity.getRedirectURL();
+const COMMON_AUTHORITY = "https://login.microsoftonline.com/common";
+
+/**
+ * Log helper function
+ */
 const debugLog = (message, ...args) => {
   console.log(`[Auth] ${message}`, ...args);
 };
 
-// Log configuration details for debugging (without sensitive info)
 debugLog("Auth configuration:", {
   clientIdPrefix: CLIENT_ID.substring(0, 8) + "...",
   redirectUri: REDIRECT_URI
 });
 
-debugLog("Exact redirect URI:", REDIRECT_URI);
+/**
+ * Register a new user in Supabase
+ * @param {Object} userData - User registration details
+ * @returns {Promise<Object>} Registration result
+ */
+export async function registerUser(userData) {
+  try {
+    // Extract organization from email domain
+    const domain = userData.email.split('@')[1];
 
+    // Supabase sign up
+    const { data, error } = await supabase.auth.signUp({
+      email: userData.email,
+      password: userData.password,
+      options: {
+        data: {
+          name: userData.name,
+          domain: domain
+        }
+      }
+    });
+
+    if (error) throw error;
+
+    // If user creation is successful, add additional details to users table
+    if (data.user) {
+      const { error: insertError } = await supabase
+        .from('users')
+        .upsert({
+          id: data.user.id,
+          email: userData.email,
+          name: userData.name,
+          organization_id: `org${Date.now()}`, // Generate org ID
+          extension_version: '1.0.0',
+          first_login: new Date(),
+          last_login: new Date(),
+          login_count: 1,
+          subscription_status: 'free'
+        }, { 
+          onConflict: 'id' 
+        });
+
+      if (insertError) {
+        console.error('Error inserting user details:', insertError);
+      }
+    }
+
+    return { success: true, data, error: null };
+  } catch (error) {
+    console.error('Registration error:', error);
+    return { success: false, data: null, error };
+  }
+}
 
 /**
- * Get the dynamic scope for Dynamics CRM based on the organization ID
- * @param {string} orgId - Organization ID
- * @returns {string} Properly formatted scope
+ * Login user with Supabase
+ * @param {string} email - User email
+ * @param {string} password - User password
+ * @returns {Promise<Object>} Login result
  */
-const getDynamicsScope = (orgId) => {
+export async function loginUserWithSupabase(email, password) {
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    });
+
+    if (error) throw error;
+
+    // Update login statistics
+    if (data.user) {
+      await supabase
+        .from('users')
+        .update({
+          last_login: new Date(),
+          login_count: supabase.sql`login_count + 1`
+        })
+        .eq('id', data.user.id);
+    }
+
+    return { success: true, data, error: null };
+  } catch (error) {
+    console.error('Supabase login error:', error);
+    return { success: false, data: null, error };
+  }
+}
+
+/**
+ * Get the Dynamics CRM auth URL with appropriate parameters
+ * @param {string} orgId - Organization ID
+ * @returns {string} Auth URL
+ */
+export function getDynamicsCrmAuthUrl(orgId) {
   if (!orgId) {
     throw new Error("Organization ID is required for authentication");
   }
   
-  // Include the specific permissions needed
-  return `https://${orgId}.crm.dynamics.com/user_impersonation openid profile offline_access`;
-};
-
-/**
- * Build the authentication URL with all required parameters
- * @param {string} orgId - Organization ID
- * @returns {string} The full authentication URL
- */
-const getAuthUrl = (orgId) => {
-  if (!orgId) {
-    throw new Error("[Auth][getAuthUrl] Organization ID is required for authentication");
-  }
-  
-  const scope = (
-    `https://${orgId}.crm.dynamics.com/.default` // Use .default to get all delegated permissions
-  );
+  const scope = `https://${orgId}.crm.dynamics.com/.default`;
   
   const authParams = new URLSearchParams({
     client_id: CLIENT_ID,
@@ -50,93 +122,19 @@ const getAuthUrl = (orgId) => {
     response_mode: 'fragment',
     redirect_uri: REDIRECT_URI,
     scope: scope,
-    prompt: 'consent', // Force consent screen to appear
+    prompt: 'consent',
     state: Date.now().toString(),
     nonce: Math.random().toString(36).substring(2)
   });
   
-  const authUrl = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?${authParams.toString()}`;
-  console.log("[Auth] Complete auth URL:", authUrl);
-  
-  return authUrl;
-};
-/**
- * Test if the current token is valid by making a simple API call
- * @param {string} token - The access token to test
- * @param {string} orgId - Organization ID
- * @returns {Promise<boolean>} True if token is valid, false otherwise
- */
-const testTokenValidity = async (token, orgId) => {
-  try {
-    if (!token || !orgId) {
-      console.warn("Missing token or orgId for validation", { 
-        hasToken: !!token, 
-        hasOrgId: !!orgId 
-      });
-      return false;
-    }
-    
-    // Make sure token has exactly one Bearer prefix
-    // CRITICAL FIX: You were referencing accessToken which doesn't exist in this scope
-    const formattedToken = token.startsWith('Bearer ') 
-      ? token  // Use token, not accessToken
-      : `Bearer ${token}`; // Use token, not accessToken
-    
-    // Log the formatted token for debugging
-    console.log("Token header:", formattedToken.substring(0, 20) + "...");
-    
-    const testUrl = `https://${orgId}.crm.dynamics.com/api/data/v9.2/WhoAmI`;
-    console.log("Testing token with URL:", testUrl);
-    
-    const response = await fetch(testUrl, {
-      method: 'GET',
-      headers: {
-        // Use the properly formatted token
-        "Authorization": formattedToken,
-        "Accept": "application/json",
-        "OData-MaxVersion": "4.0",
-        "OData-Version": "4.0"
-      }
-    });
-    
-    console.log(`Token test response status: ${response.status}`);
-    
-    // For debugging, log the full token if validation fails
-    if (response.status === 401) {
-      console.warn("Token validation failed with 401 status", {
-        tokenStartsWith: formattedToken.substring(0, 30),
-        tokenLength: formattedToken.length,
-        hasSpaceAfterBearer: formattedToken.startsWith('Bearer '),
-        orgId
-      });
-    }
-    
-    if (response.ok) {
-      const data = await response.json();
-      console.log("Token is valid. User ID:", data.UserId);
-      return true;
-    }
-    
-    // Log the error response for debugging
-    try {
-      const errorText = await response.text();
-      console.error("Token test error response:", errorText || "No error text");
-    } catch (textError) {
-      console.error("Could not extract error text:", textError);
-    }
-    
-    return false;
-  } catch (error) {
-    console.error("Token test error:", error.message, error.stack);
-    return false;
-  }
-};
+  return `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?${authParams.toString()}`;
+}
 
 /**
- * Launches the authentication process using chrome.identity API.
- * @returns {Promise<string>} The access token
+ * Authenticate with Dynamics CRM using chrome.identity
+ * @returns {Promise<Object>} Authentication result with token
  */
-export async function login() {
+export async function loginWithDynamicsCrm() {
   try {
     // Get organization ID with fallback options
     const { currentOrgId, organizationId } = await chrome.storage.local.get(['currentOrgId', 'organizationId']);
@@ -148,21 +146,23 @@ export async function login() {
       throw new Error("Please navigate to your Dynamics CRM environment first to use this extension.");
     }
     
-    console.log("Using organization ID for authentication:", orgId);
+    debugLog("Using organization ID for authentication:", orgId);
     
     // Get the authentication URL
-    const authUrl = getAuthUrl(orgId);
+    const authUrl = getDynamicsCrmAuthUrl(orgId);
     
     return new Promise((resolve, reject) => {
-      console.log("Starting authentication process");
-      
       chrome.identity.launchWebAuthFlow(
         { url: authUrl, interactive: true },
         async (redirectUrl) => {
           try {
             if (chrome.runtime.lastError || !redirectUrl) {
               console.error("Authentication failed:", chrome.runtime.lastError);
-              reject(new Error(chrome.runtime.lastError ? chrome.runtime.lastError.message : "Failed to authenticate"));
+              reject({ 
+                success: false, 
+                token: null, 
+                error: chrome.runtime.lastError ? chrome.runtime.lastError.message : "Failed to authenticate" 
+              });
               return;
             }
             
@@ -175,7 +175,11 @@ export async function login() {
             const tokenType = urlParams.get("token_type") || "Bearer";
             
             if (!accessToken) {
-              reject(new Error("No access token received"));
+              reject({ 
+                success: false, 
+                token: null, 
+                error: "No access token received" 
+              });
               return;
             }
             
@@ -195,87 +199,223 @@ export async function login() {
               tokenType
             });
             
-            console.log("Token stored successfully");
-            resolve(formattedToken);
+            debugLog("Token stored successfully");
+            resolve({ 
+              success: true, 
+              token: formattedToken, 
+              expirationTime,
+              error: null
+            });
           } catch (error) {
-            reject(error);
+            reject({ 
+              success: false, 
+              token: null, 
+              error 
+            });
           }
         }
       );
     });
   } catch (error) {
     console.error("Authentication error:", error);
-    throw error;
+    return { success: false, token: null, error };
   }
 }
 
 /**
- * Retrieves the stored access token and validates its expiration.
- * @returns {Promise<string>} Valid access token
+ * Main login function that integrates both authentication systems
+ * @returns {Promise<Object>} Authentication result
  */
-export async function getAccessToken() {
-  return new Promise((resolve, reject) => {
-    chrome.storage.local.get(["accessToken", "rawAccessToken", "expirationTime", "tokenType", "currentOrgId", "organizationId"], async (result) => {
+export async function login() {
+  try {
+    // First, authenticate with Dynamics CRM
+    const crmAuthResult = await loginWithDynamicsCrm();
+    
+    if (!crmAuthResult.success) {
+      throw new Error(crmAuthResult.error || "Failed to authenticate with Dynamics CRM");
+    }
+    
+    // After successful CRM auth, get the user info from Dynamics
+    let userInfo;
+    try {
+      userInfo = await fetchUserInfoFromCrm(crmAuthResult.token);
+    } catch (userInfoError) {
+      console.error("Error fetching user info, continuing with limited data:", userInfoError);
+      // Create minimal user info to continue
+      userInfo = {
+        id: "unknown",
+        email: "unknown@example.com",
+        name: "Unknown User",
+        organizationId: await chrome.storage.local.get(['organizationId'])
+          .then(result => result.organizationId || "unknown")
+      };
+    }
+    
+    // Only try to sync with Supabase if we have a valid email
+    if (userInfo.email && userInfo.email !== "unknown@example.com") {
       try {
-        // Use either organization ID
-        const orgId = result.currentOrgId || result.organizationId;
-        debugLog("Using orgId in getAccessToken:", orgId);
-        
-        if (!orgId) {
-          console.error("Organization ID not found in storage");
-          reject(new Error("Organization ID not found. Please navigate to Dynamics CRM."));
-          return;
-        }
-        
-        // If we have a formatted token, use it as is
-        if (result.accessToken) {
-          debugLog("Using stored token with format:", result.accessToken.substring(0, 15) + "...");
-          
-          const isValid = await testTokenValidity(result.accessToken, orgId);
-          if (isValid) {
-            resolve(result.accessToken);
-            return;
-          } else {
-            console.warn("Stored token failed API test");
-          }
-        }
-        
-        // If we have a raw token, format it and try that
-        if (result.rawAccessToken && result.tokenType) {
-          const formattedToken = `${result.tokenType} ${result.rawAccessToken}`;
-          debugLog("Trying with formatted raw token");
-          
-          // Test this token too
-          const isValid = await testTokenValidity(formattedToken, orgId);
-          if (isValid) {
-            // Save the formatted token for future use
-            chrome.storage.local.set({ accessToken: formattedToken });
-            resolve(formattedToken);
-            return;
-          } else {
-            console.warn("Raw token failed API test");
-          }
-        }
-        
-        // No valid token found
-        reject(new Error("Token not found or invalid"));
-      } catch (error) {
-        console.error("Error in getAccessToken:", error);
-        reject(error);
+        await syncMsalUserWithSupabase(userInfo);
+      } catch (syncError) {
+        console.error("Error syncing with Supabase, continuing anyway:", syncError);
       }
-    });
-  });
+    }
+    
+    return { 
+      success: true, 
+      token: crmAuthResult.token,
+      user: userInfo,
+      error: null
+    };
+  } catch (error) {
+    console.error("Login error:", error);
+    return { success: false, token: null, user: null, error };
+  }
 }
 
 /**
- * Enhanced logout function with cleanup and notification
+ * Fetch user information from Dynamics CRM
+ * @param {string} token - Access token
+ * @returns {Promise<Object>} User information
+ */
+async function fetchUserInfoFromCrm(token) {
+  try {
+    // Get the organization ID
+    const { currentOrgId, organizationId } = await chrome.storage.local.get(['currentOrgId', 'organizationId']);
+    const orgId = currentOrgId || organizationId;
+    
+    if (!orgId) {
+      throw new Error("Organization ID not found");
+    }
+    
+    // Build the URL for WhoAmI endpoint
+    const url = `https://${orgId}.crm.dynamics.com/api/data/v9.2/WhoAmI`;
+    
+    const response = await fetch(url, {
+      headers: {
+        "Authorization": token,
+        "Accept": "application/json",
+        "OData-MaxVersion": "4.0",
+        "OData-Version": "4.0"
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch user info: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    
+    // Now get additional user details using the user ID
+    const userDetailsUrl = `https://${orgId}.crm.dynamics.com/api/data/v9.2/systemusers(${data.UserId})`;
+    const userResponse = await fetch(userDetailsUrl, {
+      headers: {
+        "Authorization": token,
+        "Accept": "application/json",
+        "OData-MaxVersion": "4.0",
+        "OData-Version": "4.0"
+      }
+    });
+    
+    if (!userResponse.ok) {
+      // Return basic info if detailed fetch fails
+      return {
+        id: data.UserId,
+        email: "unknown@example.com", // Will be updated later if possible
+        name: "Unknown User",
+        organizationId: orgId
+      };
+    }
+    
+    const userDetails = await userResponse.json();
+    
+    return {
+      id: data.UserId,
+      email: userDetails.internalemailaddress || userDetails.domainname || "unknown@example.com",
+      name: `${userDetails.firstname || ''} ${userDetails.lastname || ''}`.trim() || "Unknown User",
+      organizationId: orgId
+    };
+  } catch (error) {
+    console.error("Error fetching user info from CRM:", error);
+    // Return a placeholder object with the organization ID
+    const orgId = await chrome.storage.local.get(['currentOrgId', 'organizationId'])
+      .then(result => result.currentOrgId || result.organizationId || "unknown");
+    
+    return {
+      id: "unknown",
+      email: "unknown@example.com",
+      name: "Unknown User",
+      organizationId: orgId
+    };
+  }
+}
+
+/**
+ * Syncs MSAL-authenticated user with Supabase DB
+ * @param {Object} user - MSAL user object (email, name, orgId)
+ * @returns {Promise<Object>} Sync result
+ */
+export async function syncMsalUserWithSupabase(user) {
+  try {
+    // Extract domain from email
+    const domain = user.email.split('@')[1] || 'unknown.com';
+    
+    // Use provided org ID or create one from domain
+    const orgId = user.organizationId || `org_${domain.replace(/\./g, '_')}`;
+
+    // 1. Upsert organization
+    const { error: orgError } = await supabase
+      .from('organizations')
+      .upsert({
+        id: orgId,
+        name: domain.split('.')[0] || 'Unknown Org',
+        domain: domain,
+        last_active: new Date()
+      }, { onConflict: 'id' });
+
+    if (orgError) {
+      console.error("Error upserting organization:", orgError);
+    }
+
+    // 3. Upsert user data in the users table regardless of auth status
+    const { error: userError } = await supabase
+      .from('users')
+      .upsert({
+        email: user.email,
+        name: user.name || 'Unknown User',
+        organization_id: orgId,
+        last_login: new Date(),
+        first_login: new Date(), // Will be overwritten if conflict
+        login_count: 1, // Remove the supabase.sql reference
+        extension_version: '1.0.0',
+        subscription_status: 'free',
+        dynamics_user_id: user.id || 'unknown'
+      }, { 
+        onConflict: 'email',
+        ignoreDuplicates: false
+      });
+
+    if (userError) {
+      console.error("Error upserting user:", userError);
+      throw userError;
+    }
+
+    return { success: true, error: null };
+  } catch (err) {
+    console.error("Error syncing MSAL user:", err);
+    return { success: false, error: err };
+  }
+}
+
+/**
+ * Logout from both Dynamics CRM and Supabase
  * @param {Function} setAccessToken - State setter for access token
- * @param {Function} setOpportunities - State setter for opportunities list
+ * @param {Function} setOpportunities - State setter for opportunities
  * @param {Function} setCurrentOpportunity - State setter for current opportunity
  * @param {Function} setActivities - State setter for activities
- * @param {Function} setError - State setter for error message
+ * @param {Function} setError - State setter for error
  * @param {Function} setLoading - State setter for loading state
- * @returns {Promise<Object>} Result of logout operation
+ * @param {Function} setUser - State setter for user
+ * @returns {Promise<Object>} Logout result
  */
 export const logout = async (
   setAccessToken = null,
@@ -283,15 +423,16 @@ export const logout = async (
   setCurrentOpportunity = null,
   setActivities = null,
   setError = null,
-  setLoading = null
+  setLoading = null,
+  setUser = null
 ) => {
   try {
-    // Set loading state if available
     if (setLoading) setLoading(true);
-    
-    debugLog("Starting logout process...");
-    
-    // Clear all authentication-related data from storage
+
+    // Logout from Supabase
+    await supabase.auth.signOut();
+
+    // Clear Chrome storage
     await chrome.storage.local.remove([
       "accessToken", 
       "rawAccessToken", 
@@ -299,89 +440,148 @@ export const logout = async (
       "tokenType",
       "currentOpportunityId",
       "lastUpdated",
-      // Don't remove organization ID as it's tied to the current page
-      // "currentOrgId",
-      // "organizationId"
+      "subscriptionStatus",
+      "subscriptionEndDate"
     ]);
-    
-    debugLog("Authentication data cleared from storage");
-    
-    // Reset all state variables if provided
+
+    // Reset state variables
     if (setAccessToken) setAccessToken(null);
     if (setOpportunities) setOpportunities([]);
     if (setCurrentOpportunity) setCurrentOpportunity(null);
     if (setActivities) setActivities([]);
-    
-    // Clear any existing errors
+    if (setUser) setUser(null);
     if (setError) setError(null);
-    
-    debugLog("Logout completed successfully");
-    
-    // Return success message
+
     return { success: true, message: "Logged out successfully" };
   } catch (error) {
-    console.error("Error during logout:", error);
+    console.error("Logout error:", error);
     
-    // Set error message if setter is available
     if (setError) {
       setError(`Logout failed: ${error.message}`);
     }
-    
-    // Return error information
+
     return { 
       success: false, 
       message: "Logout encountered an error", 
       error: error.message 
     };
   } finally {
-    // Ensure loading state is reset
     if (setLoading) setLoading(false);
   }
 };
 
 /**
- * Simple version of logout that only clears storage
- * @returns {Promise<void>}
- */
-export const simpleLogout = async () => {
-  return new Promise((resolve) => {
-    chrome.storage.local.remove([
-      "accessToken", 
-      "rawAccessToken", 
-      "expirationTime", 
-      "tokenType",
-      "currentOpportunityId",
-      "lastUpdated"
-    ], () => {
-      debugLog("User logged out");
-      resolve();
-    });
-  });
-};
-
-/**
- * Check if user is logged in
- * @returns {Promise<boolean>} True if logged in, false otherwise
+ * Check if user is logged in to both systems
+ * @returns {Promise<boolean>} Login status
  */
 export const isLoggedIn = async () => {
   try {
-    const { accessToken, expirationTime, currentOrgId } = await chrome.storage.local.get([
+    // Check Supabase session
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    // Check Dynamics token
+    const { accessToken, expirationTime } = await chrome.storage.local.get([
       "accessToken", 
-      "expirationTime",
-      "currentOrgId"
+      "expirationTime"
     ]);
-    
-    const hasToken = !!accessToken;
+
+    // For now, we'll prioritize the Dynamics token over the Supabase session
+    // as the Supabase integration is still being established
+    const hasDynamicsToken = !!accessToken;
     const tokenNotExpired = expirationTime ? Date.now() < expirationTime : false;
+
+    // We'll consider the user logged in if they have a valid Dynamics token
+    // Once Supabase integration is fully established, we can require both
+    return hasDynamicsToken && tokenNotExpired;
+  } catch (error) {
+    console.error("Login status check error:", error);
+    return false;
+  }
+};
+
+/**
+ * Get current user from Supabase
+ * @returns {Promise<Object>} Current user data
+ */
+export const getCurrentUser = async () => {
+  try {
+    // First try to get user from Supabase
+    const { data: { user: supabaseUser }, error: supabaseError } = await supabase.auth.getUser();
     
-    // If we have a non-expired token, also verify it works with the API
-    if (hasToken && tokenNotExpired && currentOrgId) {
-      return await testTokenValidity(accessToken, currentOrgId);
+    // If we have a Supabase user, get additional data
+    if (supabaseUser) {
+      // Get additional user data from the users table
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('email', supabaseUser.email)
+        .single();
+        
+      if (userError) {
+        console.warn("Failed to get user data from Supabase table:", userError);
+      }
+      
+      if (userData) {
+        return { 
+          ...supabaseUser, 
+          ...userData,
+          profileComplete: true 
+        };
+      }
+      
+      return { 
+        ...supabaseUser,
+        profileComplete: false 
+      };
     }
     
-    return false;
+    // If no Supabase user, try to get user info from Dynamics
+    const { accessToken } = await chrome.storage.local.get(["accessToken"]);
+    
+    if (accessToken) {
+      const userInfo = await fetchUserInfoFromCrm(accessToken);
+      
+      if (userInfo && userInfo.email && userInfo.email !== "unknown@example.com") {
+        // Store this user in users table for next time
+        await syncMsalUserWithSupabase(userInfo);
+        
+        return {
+          ...userInfo,
+          profileComplete: false,
+          provider: "dynamics"
+        };
+      }
+    }
+    
+    return null;
   } catch (error) {
-    console.error("Error checking login status:", error);
-    return false;
+    console.error("Error getting current user:", error);
+    return null;
+  }
+};
+
+/**
+ * Get access token from storage
+ * @returns {Promise<string|null>} Access token or null
+ */
+export const getAccessToken = async () => {
+  try {
+    const { accessToken, expirationTime } = await chrome.storage.local.get([
+      "accessToken",
+      "expirationTime"
+    ]);
+    
+    // Check if token is expired
+    const isExpired = expirationTime ? Date.now() > expirationTime : true;
+    
+    if (!accessToken || isExpired) {
+      console.warn("Token is missing or expired");
+      return null;
+    }
+    
+    return accessToken;
+  } catch (error) {
+    console.error("Error getting access token:", error);
+    return null;
   }
 };

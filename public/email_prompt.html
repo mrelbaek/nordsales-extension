@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Welcome to Lens</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background-color: #f9f9f9;
+    }
+    h1 {
+      color: #333;
+      font-size: 18px;
+    }
+    p {
+      color: #666;
+      font-size: 14px;
+    }
+    input {
+      width: 100%;
+      padding: 8px;
+      margin: 10px 0;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    button {
+      background-color: #4CAF50;
+      color: white;
+      padding: 10px 15px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+  </style>
+</head>
+<body>
+  <h1>Welcome to Lens!</h1>
+  <p>To get started, please enter your email address:</p>
+  <input type="email" id="email" placeholder="your@email.com" />
+  <button id="submitBtn">Continue</button>
+
+  <script>
+    document.getElementById('submitBtn').addEventListener('click', function() {
+      const email = document.getElementById('email').value;
+      if (email && email.includes('@')) {
+        // Send message back to the extension
+        chrome.runtime.sendMessage({
+          type: 'EMAIL_SUBMITTED',
+          email: email
+        });
+      } else {
+        alert('Please enter a valid email address');
+      }
+    });
+  </script>
+</body>
+</html>

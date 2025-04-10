@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { PiGear, PiList, PiX, PiArrowsClockwise, PiUser, PiChartBar, PiHouse, PiSignOut } from "react-icons/pi";
 import DebugButton from './DebugButton';
+import SubscriptionStatus from './SubscriptionStatus';
 
 /**
  * Creates a header element with consistent styling and sticky positioning
@@ -57,8 +58,8 @@ const Header = ({
         right: 0,
         zIndex: 100,
         backgroundColor: "#fff",
-        padding: "8px 8px", 
-        marginBottom: "12px",
+        // padding: "8px 8px", //
+        // marginBottom: "12px", //
         boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
       }}>
         <div style={{
@@ -92,9 +93,8 @@ const Header = ({
             </span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            {/* Add the DebugButton component here */}
+            <SubscriptionStatus />
             <DebugButton />
-            
             <button 
               onClick={onFetchMyOpenOpportunities}
               style={{
@@ -107,21 +107,7 @@ const Header = ({
               }}
             >
               <PiArrowsClockwise size={20} />
-            </button>
-            <button 
-              onClick={onSettingsClick}
-              style={{
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                display: "flex", 
-                alignItems: "center",
-                justifyContent: "center"
-              }}
-            >
-              <PiGear size={20} />
-            </button>
-            
+            </button>            
             <button 
               onClick={handleLogout}
               disabled={isLoggingOut}
@@ -218,7 +204,9 @@ const Header = ({
               alignItems: "center",
               justifyContent: "space-between"
             }}>
-              <h2 style={{ margin: 0, fontSize: "18px" }}>Lens</h2>
+            <span style={{ fontSize: "16px", fontWeight: "500", letterSpacing: "-0.5px" }}>
+              {title}
+            </span>
               <button 
                 onClick={toggleSidebar}
                 style={{
@@ -243,11 +231,11 @@ const Header = ({
                   backgroundColor: "#f5f5f5",
                   fontWeight: "500" 
                 }}
-                onClick={handleMyOpenOpportunities}
+                onClick={onFetchMyOpenOpportunities}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                   <PiArrowsClockwise size={16} />
-                  My Open Opportunities
+                  Refresh
                 </div>
               </div>
               
@@ -271,6 +259,7 @@ const Header = ({
                 </div>
               </div>
               
+              {/*
               <div 
                 style={{ 
                   marginBottom: "12px", 
@@ -290,7 +279,8 @@ const Header = ({
                   Analytics
                 </div>
               </div>
-              
+              */}
+
               <div 
                 style={{ 
                   marginBottom: "12px", 
@@ -305,10 +295,17 @@ const Header = ({
                 onMouseLeave={e => { e.currentTarget.style.backgroundColor = "transparent" }}
                 onClick={() => {setShowSidebar(false);}}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <PiUser size={16} />
-                  Profile
-                </div>
+                <a
+                  href="https://billing.stripe.com/p/login/eVa3ce7YdeM2gYofYY"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ textDecoration: "none", color: "inherit" }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <PiUser size={16} />
+                    Manage Subscription
+                  </div>
+                </a>
               </div>
             </div>
             

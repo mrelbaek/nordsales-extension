@@ -48,13 +48,10 @@ const OpportunityCard = ({ opportunity, onClick }) => {
           return;
         }
         
-        console.log(`🚨 Activity ${index}:`, activity);
-        
         // Safely get the activity date
         let date = null;
         try {
           date = getActivityDate(activity);
-          console.log(`🚨 Activity ${index} date:`, date);
         } catch (err) {
           console.warn(`🚨 Error getting date for activity ${index}:`, err);
           return;
@@ -67,7 +64,6 @@ const OpportunityCard = ({ opportunity, onClick }) => {
         }
         
         const weeksDiff = Math.floor((now - date) / msPerWeek);
-        console.log(`🚨 Activity ${index} weeks diff:`, weeksDiff);
         
         if (weeksDiff >= 0 && weeksDiff < weeks) {
           weeklyCounts[weeksDiff]++;

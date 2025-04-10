@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@azure/msal-browser": "^4.8.0",
+    "@supabase/supabase-js": "^2.49.4",
     "chart.js": "^4.4.8",
     "firebase": "^11.6.0",
     "react": "^18.2.0",

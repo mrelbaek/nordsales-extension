@@ -5,6 +5,8 @@ import Calendar from './Calendar';
 import Analytics from './Analytics';
 import TimelineLog from './TimelineLog';
 import BasicInfo from './BasicInfo';
+import SubscriptionStatus from '../SubscriptionStatus';
+
 
 /**
  * Opportunity detail component
@@ -26,7 +28,8 @@ const OpportunityDetail = ({
   onLogout,
   isLoggingOut,
   toggleAutoOpen,
-  autoOpen
+  autoOpen,
+  subscription
 }) => {
   const [accordionState, setAccordionState] = useState({
     statistics: true,
@@ -52,6 +55,7 @@ const OpportunityDetail = ({
         onBackClick={onBackClick}
         onLogout={onLogout}
         isLoggingOut={isLoggingOut}
+        subscription={subscription}
       />
 
       {/* Opportunity Name */}

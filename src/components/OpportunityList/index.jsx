@@ -8,6 +8,8 @@ import WinRate from './WinRate';
 import UserActivityChart from './UserActivityChart';
 import WonLostChart from './WonLostChart';
 import { PiIntersect } from "react-icons/pi";
+import SubscriptionStatus from '../SubscriptionStatus';
+
 
 /**
  * Opportunity list component
@@ -34,7 +36,8 @@ const OpportunityList = ({
   toggleAutoOpen,
   autoOpen,
   onFetchMyOpenOpportunities,
-  accessToken
+  accessToken,
+  subscription
 }) => {
   const [accordionState, setAccordionState] = useState({
     analytics: true,
@@ -83,6 +86,7 @@ const OpportunityList = ({
         onLogout={onLogout}
         isLoggingOut={isLoggingOut}
         onFetchMyOpenOpportunities={onFetchMyOpenOpportunities}
+        subscription={subscription}
       />
     
     {/* Scrollable content area */}

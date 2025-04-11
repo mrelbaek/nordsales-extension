@@ -1,5 +1,12 @@
 import { supabase } from './supabase';
 
+
+function mapSubscriptionStatus(dbStatus) {
+  // Map Supabase's "active" status to "pro"
+  if (dbStatus === 'active') return 'pro';
+  return dbStatus || 'free'; // Default to 'free' if null or undefined
+}
+
 /**
  * Get current user's subscription status
  * @param {string} email - User email
@@ -11,83 +18,48 @@ export async function getSubscriptionStatus(email) {
     
     if (!email) {
       console.error("Email is required to check subscription status");
-      console.trace("Stack trace for missing email:"); // This will show where the call is coming from
-      throw new Error("Email is required to check subscription status");
+      return {
+        status: 'free',
+        isActive: true
+      };
     }
     
     console.log("Checking subscription status for:", email);
     
-    // Try to get user data first
+    // Query Supabase
     const { data: userData, error: userError } = await supabase
       .from('users')
       .select('subscription_status, subscription_end_date, organization_id')
       .eq('email', email)
       .single();
       
+    console.log("Supabase response:", userData);
+    
     if (userError) {
       console.error("Error fetching user subscription data:", userError);
-      // Return default subscription if user not found
       return {
         status: 'free',
-        endDate: null,
-        isActive: true,
-        isOrgSubscription: false,
-        organizationId: null,
-        orgSeats: 0
+        isActive: true
       };
     }
     
-    // Try to get organization data
-    let orgData = null;
-    let orgError = null;
-    
-    if (userData.organization_id) {
-      const orgResult = await supabase
-        .from('organizations')
-        .select('subscription_status, subscription_end_date, subscription_seats')
-        .eq('id', userData.organization_id)
-        .single();
-        
-      orgData = orgResult.data;
-      orgError = orgResult.error;
-      
-      if (orgError) {
-        console.warn("Error fetching organization data:", orgError);
-      }
+    // Map 'active' to 'pro' here
+    let mappedStatus = userData.subscription_status;
+    if (mappedStatus === 'active') {
+      mappedStatus = 'pro';
     }
     
-    // Determine effective subscription status
-    // Organization plan overrides individual plan if better
-    const plans = ['free', 'basic', 'pro', 'enterprise'];
-    const userPlanIndex = plans.indexOf(userData.subscription_status || 'free');
-    const orgPlanIndex = orgData ? plans.indexOf(orgData.subscription_status || 'free') : -1;
-    
-    const effectiveStatus = (orgPlanIndex > userPlanIndex && orgPlanIndex >= 0) 
-      ? orgData.subscription_status 
-      : userData.subscription_status || 'free';
-      
-    const effectiveEndDate = (orgPlanIndex > userPlanIndex && orgPlanIndex >= 0)
-      ? orgData.subscription_end_date
-      : userData.subscription_end_date;
-    
     return {
-      status: effectiveStatus,
-      endDate: effectiveEndDate || null,
-      isActive: !effectiveEndDate || new Date(effectiveEndDate) > new Date() || effectiveStatus === 'free',
-      isOrgSubscription: orgPlanIndex > userPlanIndex && orgPlanIndex >= 0,
-      organizationId: userData.organization_id,
-      orgSeats: orgData ? (orgData.subscription_seats || 0) : 0
+      status: mappedStatus,
+      endDate: userData.subscription_end_date || null,
+      isActive: true,
+      isOrgSubscription: false
     };
   } catch (error) {
     console.error("Error fetching subscription status:", error);
-    // Return default subscription on error
     return {
       status: 'free',
-      endDate: null,
-      isActive: true,
-      isOrgSubscription: false,
-      organizationId: null,
-      orgSeats: 0
+      isActive: true
     };
   }
 }
@@ -155,6 +127,7 @@ export async function updateOrgSubscription(orgId, status, endDate, seats = 5) {
     return { success: false, error };
   }
 }
+
 
 /**
  * Check if feature is available for user's subscription level

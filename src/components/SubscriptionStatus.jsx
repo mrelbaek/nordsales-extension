@@ -1,12 +1,20 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 
 const SubscriptionStatus = ({ subscription }) => {
+  // Log the subscription for debugging
+  useEffect(() => {
+    console.log('SubscriptionStatus component received subscription:', subscription);
+  }, [subscription]);
+
   // Stripe customer portal URL
   const stripePortalUrl = 'https://billing.stripe.com/p/login/eVa3ce7YdeM2gYofYY';
   
   // Configure badge based on subscription tier
   let badgeLabel, badgeColors;
   const tier = subscription?.status || 'free';
+
+  // Debug line to check what tier is being processed
+  console.log('Processing subscription tier:', tier);
 
   if (tier === 'pro' || tier === 'enterprise') {
     badgeLabel = tier.charAt(0).toUpperCase() + tier.slice(1);

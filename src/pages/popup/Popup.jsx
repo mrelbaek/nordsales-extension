@@ -18,7 +18,8 @@ import OpportunityDetail from "../../components/OpportunityDetail";
 import Header from "../../components/Header.jsx";
 import DebugButton from "../../components/DebugButton.jsx";
 import { getSubscriptionStatus, hasFeatureAccess } from "../../utils/subscriptions.js";
-import { checkSupabaseConnection, supabase } from "../../utils/supabase.js";
+import { checkSupabaseConnection } from "../../utils/supabase.js";
+import { restoreSupabaseSession } from '../../utils/session.js';
 
 /**
  * Main popup component that manages the application state
@@ -151,18 +152,11 @@ const Popup = () => {
           
           // Get user information
           const userData = await getCurrentUser();
-          console.log("[Popup] Retrieved user data:", userData);
           setUser(userData);
           
           // Initialize subscription status
-          if (userData && userData.email) {
+          if (userData?.email) {
             await initializeSubscriptions(userData);
-          } else {
-            console.warn("[Popup] No user email available for subscription check");
-            setSubscription({
-              status: 'free',
-              isActive: true
-            });
           }
           
           console.log("[Popup.jsx] Got access token:", accessToken ? "yes" : "no");
@@ -473,38 +467,73 @@ const Popup = () => {
     }
   };
 
+  // Add this function to your Popup.jsx component
+  const handleRefresh = async () => {
+    try {
+      // Prevent concurrent operations
+      if (stateTransitionLock.current) {
+        console.log("[Popup.jsx] State transition in progress, deferring refresh");
+        return;
+      }
+      
+      stateTransitionLock.current = true;
+      setLoading(true);
+      
+      // Just fetch opportunities without trying to update subscription
+      if (currentOpportunityId && currentOpportunity) {
+        // If we're viewing a specific opportunity, refresh that
+        await handleFetchOpportunityDetails(accessToken, currentOpportunityId);
+      } else {
+        // Otherwise refresh the opportunities list
+        await fetchOpportunitiesWithActivities(
+          accessToken, 
+          setLoading, 
+          setError, 
+          setOpportunities, 
+          setDebugInfo
+        );
+      }
+      
+      // Also refresh closed opportunities for analytics
+      await handleFetchClosedOpportunities(accessToken);
+      
+      console.log("[Popup.jsx] Refresh completed successfully");
+    } catch (error) {
+      console.error("Error during refresh:", error);
+      setError(`Failed to refresh data: ${error.message}`);
+    } finally {
+      stateTransitionLock.current = false;
+      setLoading(false);
+    }
+  };
+
+
   /**
    * Fetch all open opportunities for current user
    */
   const handleFetchMyOpenOpportunities = async () => {
     try {
+      // Prevent concurrent operations
       if (stateTransitionLock.current) {
         console.log("[Popup.jsx] State transition in progress, deferring my opportunities fetch");
         return;
       }
-  
+      
       stateTransitionLock.current = true;
-  
-      // Fetch opportunities
-      await fetchMyOpenOpportunities(accessToken, setLoading, setError, setOpportunities);
+      
+      // Call the utility function
+      await fetchMyOpenOpportunities(
+        accessToken,
+        setLoading,
+        setError,
+        setOpportunities
+      );
+      
+      // Also refresh closed opportunities
       await handleFetchClosedOpportunities(accessToken);
-  
-      // 🔄 Refetch subscription status
-      const {
-        data: { user },
-        error
-      } = await supabase.auth.getUser();
-  
-      if (error || !user?.email) {
-        throw new Error("Unable to get user email");
-      }
-  
-      const status = await getSubscriptionStatus(user.email);
-      console.log('[Popup.jsx] Refreshed subscription:', status);
-      setSubscriptionStatus(status.status);
     } catch (error) {
-      console.error("Error fetching my opportunities or subscription:", error);
-      setError(`Failed to fetch opportunities or subscription: ${error.message}`);
+      console.error("Error fetching my opportunities:", error);
+      setError(`Failed to fetch opportunities list: ${error.message}`);
     } finally {
       stateTransitionLock.current = false;
     }
@@ -787,6 +816,7 @@ const Popup = () => {
             toggleAutoOpen={toggleAutoOpen}
             autoOpen={autoOpen}
             onLogout={handleLogout}
+            onFetchMyOpenOpportunities={handleRefresh}
             isLoggingOut={isLoggingOut}
             subscription={subscription}
             canUseFeature={canUseFeature}
@@ -843,7 +873,7 @@ const Popup = () => {
           toggleAutoOpen={toggleAutoOpen}
           autoOpen={autoOpen}
           accessToken={accessToken}
-          onFetchMyOpenOpportunities={handleFetchMyOpenOpportunities}
+          onFetchMyOpenOpportunities={handleRefresh}
           subscription={subscription}
           canUseFeature={canUseFeature}
           user={user}

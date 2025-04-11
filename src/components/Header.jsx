@@ -26,7 +26,8 @@ const Header = ({
   onSettingsClick = () => {},
   onFetchMyOpenOpportunities = () => {},
   onLogout = () => {},
-  isLoggingOut = false
+  isLoggingOut = false,
+  subscription = {}
 }) => {
   const [showSidebar, setShowSidebar] = useState(false);
   
@@ -93,7 +94,7 @@ const Header = ({
             </span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <SubscriptionStatus />
+            <SubscriptionStatus subscription={subscription} />
             <DebugButton />
             <button 
               onClick={onFetchMyOpenOpportunities}
@@ -305,6 +306,24 @@ const Header = ({
                     <PiUser size={16} />
                     Manage Subscription
                   </div>
+                  {subscription?.status && (
+                    <div style={{
+                      margin: "0 16px 12px",
+                      padding: "10px",
+                      borderRadius: "6px",
+                      fontSize: "13px",
+                      color: "#333",
+                      lineHeight: "1.5",
+                      boxShadow: "inset 0 0 2px rgba(0,0,0,0.05)"
+                    }}>
+                      <strong>Plan:</strong> {subscription.status.charAt(0).toUpperCase() + subscription.status.slice(1)}<br />
+                      {subscription.endDate && (
+                        <>
+                          <strong>Valid until:</strong> {new Date(subscription.endDate).toLocaleDateString()}
+                        </>
+                      )}
+                    </div>
+                  )}
                 </a>
               </div>
             </div>

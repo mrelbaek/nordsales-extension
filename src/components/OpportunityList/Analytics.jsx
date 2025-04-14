@@ -282,7 +282,7 @@ const ListAnalytics = ({ opportunities = [], closedOpportunities = [], isOpen, o
       return !opp.activities || opp.activities.length === 0;
     }).length
   };
-
+    
   return (
     <AccordionSection
       title="Portfolio Analytics"

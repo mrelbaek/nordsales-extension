@@ -9,6 +9,9 @@ import UserActivityChart from './UserActivityChart';
 import WonLostChart from './WonLostChart';
 import { PiIntersect } from "react-icons/pi";
 import SubscriptionStatus from '../SubscriptionStatus';
+import FeatureGate from '../FeatureGate';
+import ProPill from '../common/ProPill';
+
 
 
 /**
@@ -153,39 +156,94 @@ const OpportunityList = ({
         </AccordionSection>
       </div>
       
-      {/* Won/Lost Chart Section */}
+      {/* Won/Loss Distribution Section */}
       <div style={{ padding: "0 16px" }}>
         <AccordionSection
-          title="Win/Loss Distribution"
+          title={
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'space-between', 
+              width: '100%' 
+            }}>
+              <h3 style={{ margin: "0", fontSize: "14px", fontWeight: "600" }}>Win/Loss Distribution</h3>
+              {subscription?.status && <ProPill status={subscription.status} />}
+            </div>
+          }
           isOpen={accordionState.wonLost}
           onToggle={() => toggleAccordion('wonLost')}
         >
-          <WonLostChart closedOpportunities={closedOpportunities} />
+          <FeatureGate
+            featureName="winLossCharts"
+            fallbackMessage="Win/Loss Chart is not available with your subscription plan."
+            teaseComponent={<WonLostChart closedOpportunities={closedOpportunities.slice(0, 3)} />}
+            subscription={subscription}
+          >
+            <WonLostChart closedOpportunities={closedOpportunities} />
+          </FeatureGate>
         </AccordionSection>
       </div>
 
       {/* Sales Cycle Length Section */}
       <div style={{ padding: "0 16px" }}>
         <AccordionSection
-          title="Sales Cycle Length"
+          title={
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'space-between', 
+              width: '100%' 
+            }}>
+              <h3 style={{ margin: 0, fontSize: "14px", fontWeight: "600" }}>
+                Sales Cycle Length
+              </h3>
+              {subscription?.status && <ProPill status={subscription.status} />}
+            </div>
+          }
           isOpen={accordionState.salesCycle}
           onToggle={() => toggleAccordion('salesCycle')}
         >
-          <SalesCycleChart closedOpportunities={closedOpportunities} />
+          <FeatureGate
+            featureName="salesCycleAnalytics"
+            fallbackMessage="Sales Cycle Length analysis is not available with your subscription plan."
+            teaseComponent={<SalesCycleChart closedOpportunities={closedOpportunities.slice(0, 3)} />}
+            subscription={subscription}
+          >
+            <SalesCycleChart closedOpportunities={closedOpportunities} />
+          </FeatureGate>
         </AccordionSection>
       </div>
 
       {/* Activities Chart Section */}
       <div style={{ padding: "0 16px" }}>
         <AccordionSection
-          title="Activity Trends"
+          title={
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'space-between', 
+              width: '100%' 
+            }}>
+              <h3 style={{ margin: 0, fontSize: "14px", fontWeight: "600" }}>
+                Activity Trends
+              </h3>
+              {subscription?.status && <ProPill status={subscription.status} />}
+            </div>
+          }
           isOpen={accordionState.activities}
           onToggle={() => toggleAccordion('activities')}
         >
-          <UserActivityChart accessToken={accessToken} />
+          <FeatureGate
+            featureName="fullActivityTrends"
+            fallbackMessage="Full activity insights are not available with your current plan."
+            teaseComponent={<UserActivityChart accessToken={accessToken} limited />}
+            subscription={subscription}
+          >
+            <UserActivityChart accessToken={accessToken} />
+          </FeatureGate>
         </AccordionSection>
-      </div>      
-      
+      </div>
+
       {/* Opportunities List Section */}
       <div style={{ padding: "0 16px" }}>
         <AccordionSection

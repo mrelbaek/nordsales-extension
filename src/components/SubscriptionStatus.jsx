@@ -16,7 +16,7 @@ const SubscriptionStatus = ({ subscription }) => {
   // Debug line to check what tier is being processed
   console.log('Processing subscription tier:', tier);
 
-  if (tier === 'pro' || tier === 'enterprise') {
+  if (tier === 'pro' || tier === 'enterprise' || tier === 'team') {
     badgeLabel = tier.charAt(0).toUpperCase() + tier.slice(1);
     badgeColors = {
       background: '#111111',
@@ -56,6 +56,20 @@ const SubscriptionStatus = ({ subscription }) => {
       >
         {badgeLabel}
       </span>
+      {subscription?.isOrgSubscription && (
+        <span
+          style={{
+            display: 'inline-block',
+            padding: '3px 8px',
+            borderRadius: '20px',
+            fontSize: '10px',
+            backgroundColor: '#0078d4',
+            color: '#FFFFFF',
+          }}
+        >
+          Team Plan
+        </span>
+      )}
     </div>
   );
 };

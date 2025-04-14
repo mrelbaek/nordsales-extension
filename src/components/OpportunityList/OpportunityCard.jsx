@@ -131,8 +131,8 @@ const OpportunityCard = ({ opportunity, onClick }) => {
       }}
       onMouseEnter={(e) => {
         e.currentTarget.style.transform = "translateY(-2px)";
-        e.currentTarget.style.boxShadow = "0 4px 6px rgba(0,0,0,0.1)";
-        e.currentTarget.style.borderLeft = "1px solid #ff8f6b";
+        e.currentTarget.style.boxShadow = "0 4px 6px rgba(0,0,0,0.2)";
+        e.currentTarget.style.borderLeft = `1px solidrgba(165, 165, 165, 0.80)`;
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.transform = "translateY(0)";

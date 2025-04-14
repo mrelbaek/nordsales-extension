@@ -70,7 +70,7 @@ const Header = ({
           borderRadius: "4px",
           boxSizing: "border-box",
           justifyContent: "space-between",
-          padding: "10px 12px",
+          padding: "2px 12px",
           backgroundColor: "#ffffff",
           border: "1px solid #e0e0e0",
           fontFamily: "Segoe UI, sans-serif",
@@ -89,9 +89,9 @@ const Header = ({
             >
               <PiList size={20} />
             </button>
-            <span style={{ fontSize: "16px", fontWeight: "500", letterSpacing: "-0.5px" }}>
+            <h2 style={{ fontSize: "16px", fontWeight: "600", fontFamily: "'Parkinsans', sans-serif" }}>
               {title}
-            </span>
+            </h2>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             <SubscriptionStatus subscription={subscription} />
@@ -199,15 +199,15 @@ const Header = ({
           >
             {/* Sidebar Header */}
             <div style={{ 
-              padding: "20px 16px", 
+              padding: "2px 16px", 
               borderBottom: "1px solid #f0f0f0",
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between"
             }}>
-            <span style={{ fontSize: "16px", fontWeight: "500", letterSpacing: "-0.5px" }}>
+            <h2 style={{ fontSize: "16px", fontWeight: "600", fontFamily: "'Parkinsans', sans-serif", marginLeft: "12px" }}>
               {title}
-            </span>
+            </h2>
               <button 
                 onClick={toggleSidebar}
                 style={{
@@ -317,7 +317,8 @@ const Header = ({
                       boxShadow: "inset 0 0 2px rgba(0,0,0,0.05)"
                     }}>
                       <strong>Plan:</strong> {subscription.status.charAt(0).toUpperCase() + subscription.status.slice(1)}<br />
-                      {subscription.endDate && (
+                      {subscription.status !== 'free' && subscription.endDate && (
+                        
                         <>
                           <strong>Valid until:</strong> {new Date(subscription.endDate).toLocaleDateString()}
                         </>

@@ -2,10 +2,11 @@
 
 import { dynamicsAuth } from './dynamicsAuth';
 import { supabaseAuth } from './supabaseAuth';
-import { subscriptionService } from './subscriptionService';
+import { getSubscriptionStatus } from './subscriptions';
+import { supabase } from './supabase';  // Added this import!
 
 /**
- * Main login function - handles both Dynamics and Supabase authentication
+ * Main login function - handles both Dynamics and Supabase data sync
  * @returns {Promise<Object>} Authentication result with user info
  */
 export async function login() {
@@ -20,28 +21,37 @@ export async function login() {
     // Step 2: Get user info from Dynamics
     const userInfo = await dynamicsAuth.fetchUserInfo(dynamicsResult.token);
     
-    // Step 3: Sync with Supabase (for subscription tracking)
+    // Store session data early so user can still use the app even if Supabase sync fails
+    await storeSession(dynamicsResult, userInfo, { status: 'free', isActive: true });
+    
+    // Step 3: Sync with Supabase (for data storage, not auth)
     try {
       await supabaseAuth.syncUserWithSupabase(userInfo);
+      
+      // Step 4: Check subscription status only after sync is successful
+      const subscription = await getSubscriptionStatus();
+      
+      // Update the session with correct subscription info
+      await storeSession(dynamicsResult, userInfo, subscription);
+      
+      return {
+        success: true,
+        token: dynamicsResult.token,
+        user: userInfo,
+        subscription: subscription,
+        error: null
+      };
     } catch (supabaseError) {
       console.warn("Supabase sync failed, continuing with Dynamics auth only:", supabaseError);
-      // Continue even if Supabase fails - this is optional for core functionality
+      // Continue with basic functionality and free subscription
+      return {
+        success: true,
+        token: dynamicsResult.token,
+        user: userInfo,
+        subscription: { status: 'free', isActive: true },
+        error: null
+      };
     }
-    
-    // Step 4: Check subscription status
-    const subscription = await subscriptionService.getSubscriptionStatus(userInfo.email);
-    
-    // Step 5: Store session data
-    await storeSession(dynamicsResult, userInfo, subscription);
-    
-    // Return success with user info and subscription
-    return {
-      success: true,
-      token: dynamicsResult.token,
-      user: userInfo,
-      subscription: subscription,
-      error: null
-    };
   } catch (error) {
     console.error("Login error:", error);
     return { success: false, error: error.message };
@@ -54,6 +64,7 @@ export async function login() {
  */
 export async function isLoggedIn() {
   try {
+    // Only check Dynamics token since we're not using Supabase Auth
     const { accessToken, expirationTime } = await chrome.storage.local.get([
       "accessToken", "expirationTime"
     ]);
@@ -100,20 +111,18 @@ export async function getCurrentUser() {
 }
 
 /**
- * Log out from all services
+ * Log out the user
  * @param {Object} stateFunctions - React state setter functions
  * @returns {Promise<Object>} Logout result
  */
 export async function logout(stateFunctions = {}) {
   try {
-    // Clean up Supabase session
-    await supabaseAuth.signOut();
-    
-    // Clear storage
+    // No need to sign out from Supabase Auth since we're not using it
+    // Just clear storage
     await chrome.storage.local.remove([
       "accessToken", "rawAccessToken", "expirationTime", 
       "tokenType", "user", "subscription", "currentOpportunityId", 
-      "lastUpdated", "supabaseSession"
+      "lastUpdated"
     ]);
     
     // Reset React state if functions provided

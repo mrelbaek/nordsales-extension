@@ -1,31 +1,50 @@
 import React, { useState, useEffect } from 'react';
-import { hasFeatureAccess, getSubscriptionStatus, openPaymentDialog } from '../utils/subscriptions';
+import { hasFeatureAccess, getSubscriptionStatus } from '../utils/subscriptions';
 import { PiLockLight, PiCrownLight } from "react-icons/pi";
 
 /**
  * Component to gate features based on subscription status
  * 
- * @param {Object} props - Component props
+ * @param {Object} props
  * @param {string} props.featureName - Name of the feature to check
- * @param {React.ReactNode} props.children - Content to render if user has access
- * @param {string} props.fallbackMessage - Message to show if user doesn't have access
- * @returns {JSX.Element} Feature gate component
+ * @param {React.ReactNode} props.children - Full content to render if access is granted
+ * @param {string} [props.fallbackMessage] - Message to show if locked
+ * @param {React.ReactNode} [props.teaseComponent] - Teaser version of content if access is denied
+ * @param {Object} [props.subscription] - Optional subscription object (can be passed from parent)
+ * @param {string} [props.subscriptionStatus] - Optional override for status check
+ * @returns {JSX.Element}
  */
-const FeatureGate = ({ featureName, children, fallbackMessage }) => {
+const FeatureGate = ({
+  featureName,
+  children,
+  fallbackMessage,
+  teaseComponent,
+  subscription: externalSub,
+  subscriptionStatus
+}) => {
   const [hasAccess, setHasAccess] = useState(false);
   const [loading, setLoading] = useState(true);
   const [subscription, setSubscription] = useState(null);
 
-  // Check feature access on mount
   useEffect(() => {
     const checkAccess = async () => {
       try {
-        const access = await hasFeatureAccess(featureName);
-        setHasAccess(access);
+        // Log what we're using to check access to help debug
+        console.log(`[FeatureGate] Checking access for ${featureName}`, {
+          externalSub,
+          subscriptionStatus
+        });
         
-        // Load subscription data for upgrade prompt
-        const status = await getSubscriptionStatus();
-        setSubscription(status);
+        const sub = externalSub || await getSubscriptionStatus();
+        setSubscription(sub);
+        
+        // Determine which status to use for access check
+        const statusToCheck = subscriptionStatus || (sub && sub.status) || 'free';
+        console.log(`[FeatureGate] Using status for access check:`, statusToCheck);
+        
+        const access = hasFeatureAccess(featureName, statusToCheck);
+        console.log(`[FeatureGate] Access result:`, access);
+        setHasAccess(access);
       } catch (error) {
         console.error(`Error checking access for ${featureName}:`, error);
         setHasAccess(false);
@@ -35,24 +54,7 @@ const FeatureGate = ({ featureName, children, fallbackMessage }) => {
     };
 
     checkAccess();
-  }, [featureName]);
-
-  // Handle upgrade button click
-  const handleUpgrade = async () => {
-    try {
-      await openPaymentDialog();
-      
-      // Recheck access after upgrade attempt
-      const access = await hasFeatureAccess(featureName);
-      setHasAccess(access);
-      
-      // Refresh subscription data
-      const status = await getSubscriptionStatus();
-      setSubscription(status);
-    } catch (error) {
-      console.error("Error during upgrade:", error);
-    }
-  };
+  }, [featureName, externalSub, subscriptionStatus]);
 
   // Show loading state
   if (loading) {
@@ -62,18 +64,51 @@ const FeatureGate = ({ featureName, children, fallbackMessage }) => {
       </div>
     );
   }
+  
+  // Add debug info to help diagnose issues
+  console.log(`[FeatureGate] Render state for ${featureName}:`, {
+    hasAccess,
+    subscriptionStatus: subscriptionStatus || (subscription && subscription.status) || 'unknown',
+    loading
+  });
 
-  // If user has access, render children
+  // ✅ Full access
   if (hasAccess) {
     return children;
   }
 
-  // Get appropriate message for upsell
-  const message = fallbackMessage || 'This feature requires a Pro subscription';
-  const isTrialing = subscription?.subscriptionStatus === 'trialing';
-  const upgradeLabel = isTrialing ? 'Upgrade Now' : 'Upgrade to Pro';
+  // 👀 Tease mode
+  if (teaseComponent) {
+    return (
+      <div style={{ position: 'relative' }}>
+        {teaseComponent}
+        <div
+          style={{
+            position: 'absolute',
+            top: 0, left: 0, right: 0, bottom: 0,
+            backgroundColor: 'rgba(255,255,255,0.7)',
+            backdropFilter: 'blur(2px)',
+            borderRadius: '8px',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            fontSize: '13px',
+            fontWeight: '500',
+            color: '#333',
+            textAlign: 'center',
+            padding: '12px'
+          }}
+        >
+          Upgrade to Pro to unlock full insights
+        </div>
+      </div>
+    );
+  }
 
-  // Render feature locked message with upgrade option
+  // ❌ No access and no teaser: fallback display
+  const message = fallbackMessage || 'This feature requires a Pro subscription';
+  const isTrialing = subscription?.status === 'trialing';
+
   return (
     <div style={{
       padding: '24px',
@@ -82,9 +117,9 @@ const FeatureGate = ({ featureName, children, fallbackMessage }) => {
       borderRadius: '8px',
       border: '1px solid #e0e0e0',
     }}>
-      <div style={{ 
-        display: 'flex', 
-        flexDirection: 'column', 
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
         alignItems: 'center',
         gap: '16px'
       }}>
@@ -99,38 +134,26 @@ const FeatureGate = ({ featureName, children, fallbackMessage }) => {
         }}>
           <PiLockLight size={24} color="#666" />
         </div>
-        
+
         <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '500' }}>
           Pro Feature
         </h3>
-        
+
         <p style={{ margin: 0, fontSize: '14px', color: '#666', maxWidth: '300px' }}>
           {message}
         </p>
-        
+
         {isTrialing && (
-          <p style={{ margin: 0, fontSize: '14px', color: '#40916c', maxWidth: '300px' }}>
+          <p style={{
+            margin: 0,
+            fontSize: '14px',
+            color: '#40916c',
+            maxWidth: '300px'
+          }}>
             <PiCrownLight style={{ marginRight: '4px', verticalAlign: 'middle' }} />
             You're currently in your Pro trial period
           </p>
         )}
-        
-        <button
-          onClick={handleUpgrade}
-          style={{
-            backgroundColor: '#0078d4',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            padding: '8px 16px',
-            fontSize: '14px',
-            fontWeight: '500',
-            cursor: 'pointer',
-            marginTop: '8px',
-          }}
-        >
-          {upgradeLabel}
-        </button>
       </div>
     </div>
   );

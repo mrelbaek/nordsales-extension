@@ -7,55 +7,58 @@ import { supabase } from './supabase';
  * @param {string} email - User email
  * @returns {Promise<Object>} Subscription details
  */
-export async function getSubscriptionStatus(email) {
+export async function getSubscriptionStatus() {
   try {
-    console.log("Checking subscription status for:", email);
-    
-    if (!email) {
-      console.error("Email is required for subscription check");
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      console.error("User not authenticated:", authError);
       return getDefaultSubscription();
     }
-    
-    // Check if email is already stored for manual override
+
+    const uid = user.id;
+    const email = user.email;
+
+    console.log("Checking subscription status for:", uid, email);
+
+    // Check for manual override (optional, still by email if needed)
     const { manualSubscription } = await chrome.storage.local.get(['manualSubscription']);
     if (manualSubscription && manualSubscription.email === email) {
       console.log("Using manual subscription override:", manualSubscription.status);
       return manualSubscription;
     }
-    
-    // Query user record from Supabase
+
+    // Query Supabase by UID (not email)
     const { data: userData, error: userError } = await supabase
       .from('users')
       .select('subscription_status, subscription_end_date, organization_id')
-      .eq('email', email)
+      .eq('uid', uid)
       .single();
-    
+
     if (userError) {
       console.error("Error fetching user subscription data:", userError);
       return getDefaultSubscription();
     }
-    
-    // Critical - map 'active' to 'pro'
+
     const mappedStatus = mapSubscriptionStatus(userData.subscription_status);
-    
-    // Check organization subscription
+
+    // Fetch org subscription if present
     const { data: orgData } = await supabase
       .from('organizations')
       .select('subscription_status, subscription_end_date, subscription_seats')
       .eq('id', userData.organization_id)
       .single();
-    
-    // Determine effective subscription (org plan overrides individual if better)
+
     const subscriptionData = determineEffectiveSubscription(userData, orgData);
-    
+
     console.log("Effective subscription:", subscriptionData);
-    
     return subscriptionData;
   } catch (error) {
     console.error("Error getting subscription status:", error);
     return getDefaultSubscription();
   }
 }
+
 
 /**
  * Map database subscription status to application status

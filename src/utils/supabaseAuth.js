@@ -1,9 +1,9 @@
-// supabaseAuth.js - Handles Supabase authentication and user management
+// supabaseAuth.js - Handles Supabase data synchronization for Dynamics users
 
 import { supabase } from './supabase';
 
 /**
- * Sync user data with Supabase
+ * Sync Dynamics user data with Supabase database
  * @param {Object} user - User data from Dynamics
  * @returns {Promise<Object>} Result of sync operation
  */
@@ -13,37 +13,42 @@ export async function syncUserWithSupabase(user) {
       throw new Error("Valid email required for Supabase sync");
     }
     
+    // Generate a consistent UID for this user based on their Dynamics ID or email
+    // This ensures we can have a unique identifier for RLS policies
+    const uid = user.id ? `dynamics_${user.id}` : `email_${user.email.replace(/[^a-zA-Z0-9]/g, '')}`;
+    
     const domain = user.email.split('@')[1] || 'unknown.com';
     const orgId = user.organizationId || `org_${domain.replace(/\./g, '_')}`;
     
     // Update organization
     await updateOrganization(orgId, domain);
     
-    // Check if user exists
+    // Check if user exists by email
     const { data: existingUser } = await supabase
       .from('users')
-      .select('id, login_count, subscription_status')
+      .select('id, login_count, subscription_status, uid')
       .eq('email', user.email)
       .single();
     
-    const isNewUser = !existingUser;
-    const loginCount = existingUser?.login_count || 0;
-    
     // Prepare user data
     const userData = {
+      uid: uid, // Use our generated consistent UID
       email: user.email,
       name: user.name || 'Unknown User',
       organization_id: orgId,
       last_login: new Date(),
-      login_count: loginCount + 1,
       extension_version: '1.0.0',
       dynamics_user_id: user.id || 'unknown'
     };
     
-    // Set defaults for new users
-    if (isNewUser) {
+    // Set login count and other fields based on existing data
+    if (existingUser) {
+      userData.login_count = (existingUser.login_count || 0) + 1;
+    } else {
+      // Set defaults for new users
       userData.subscription_status = 'free';
       userData.first_login = new Date();
+      userData.login_count = 1;
     }
     
     // Update user in database
@@ -51,7 +56,10 @@ export async function syncUserWithSupabase(user) {
       .from('users')
       .upsert(userData, { onConflict: 'email' });
     
-    if (error) throw error;
+    if (error) {
+      console.error("Error upserting user:", error);
+      throw error;
+    }
     
     return { success: true };
   } catch (error) {
@@ -81,11 +89,12 @@ async function updateOrganization(orgId, domain) {
 }
 
 /**
- * Sign out from Supabase
- * @returns {Promise<void>}
+ * Clear user data - this does NOT sign out of Supabase Auth
+ * since we're not using it
  */
 export async function signOut() {
-  return supabase.auth.signOut();
+  // No Supabase Auth to sign out from, just a stub for compatibility
+  return Promise.resolve({ success: true });
 }
 
 export const supabaseAuth = {

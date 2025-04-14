@@ -1,6 +1,4 @@
-// This is a modified version of your src/pages/popup/Popup.jsx file
-// Adding Supabase authentication integration and fixing duplicate state declarations
-
+// Fixed Popup.jsx with properly implemented handleFetchOpportunityDetails function
 import React, { useEffect, useState, useRef } from "react";
 import { login, logout, isLoggedIn, getCurrentUser } from "../../utils/auth.js";
 import {
@@ -18,7 +16,7 @@ import OpportunityDetail from "../../components/OpportunityDetail";
 import Header from "../../components/Header.jsx";
 import DebugButton from "../../components/DebugButton.jsx";
 import { getSubscriptionStatus, hasFeatureAccess } from "../../utils/subscriptions.js";
-import { checkSupabaseConnection } from "../../utils/supabase.js";
+import { checkSupabaseConnection, supabase } from "../../utils/supabase.js";
 import { restoreSupabaseSession } from '../../utils/session.js';
 
 /**
@@ -54,38 +52,152 @@ const Popup = () => {
   const debounceTimerRef = useRef(null);
 
   // Initialize subscription information
-  const initializeSubscriptions = async (userData) => {
+  const initializeSubscriptions = async () => {
     try {
-      // Check if we have user data with email
-      if (!userData || !userData.email) {
-        console.warn("[Popup] Cannot initialize subscriptions: Missing user email");
-        setSubscription({
-          status: 'free',
-          isActive: true
-        });
+      // No need to check for Supabase Auth user, just get the user from storage
+      const { user } = await chrome.storage.local.get(["user"]);
+      
+      if (!user || !user.email) {
+        console.warn("[Popup] No user in storage, defaulting to free tier");
+        setSubscription({ status: 'free', isActive: true });
         return;
       }
       
-      console.log("[Popup] Initializing subscription for email:", userData.email);
-      
-      // Make sure to pass the email directly
-      const subStatus = await getSubscriptionStatus(userData.email);
+      console.log("[Popup] Initializing subscription for email:", user.email);
+      const subStatus = await getSubscriptionStatus();
       setSubscription(subStatus);
       
-      console.log("[Popup] Subscription initialized:", subStatus.status);
-      
-      // Store subscription info locally
-      chrome.storage.local.set({ 
+      chrome.storage.local.set({
         subscriptionStatus: subStatus.status,
         subscriptionEndDate: subStatus.endDate
       });
-    } catch (error) {
-      console.error("Error initializing subscriptions:", error);
-      // Set a default free subscription as fallback
-      setSubscription({
-        status: 'free',
-        isActive: true
+    } catch (err) {
+      console.error("Error initializing subscriptions:", err);
+      setSubscription({ status: 'free', isActive: true });
+    }
+  };
+
+  /**
+   * Fetch opportunity details and set state
+   * This is the missing function that was causing the error
+   */
+  const handleFetchOpportunityDetails = async (token, oppId) => {
+    try {
+      console.log("[Popup.jsx] handleFetchOpportunityDetails called for opportunity:", oppId);
+      
+      // Validate inputs
+      if (!token) {
+        console.error("[Popup.jsx] No token provided to handleFetchOpportunityDetails");
+        setError("Authentication required");
+        return;
+      }
+      
+      if (!oppId) {
+        console.error("[Popup.jsx] No opportunity ID provided to handleFetchOpportunityDetails");
+        setError("No opportunity ID available");
+        return;
+      }
+      
+      // Prevent concurrent operations
+      if (stateTransitionLock.current) {
+        console.log("[Popup.jsx] State transition in progress, deferring opportunity details fetch");
+        return;
+      }
+      
+      // Acquire lock and set loading state
+      stateTransitionLock.current = true;
+      setLoading(true);
+      
+      // Set a temporary state to ensure UI shows we're loading a specific opportunity
+      setCurrentOpportunity(prev => {
+        // Only set temporary state if we don't already have this opportunity
+        if (!prev || prev.opportunityid !== oppId) {
+          return {
+            opportunityid: oppId,
+            name: "Loading opportunity...",
+            loading: true,
+            estimatedvalue: 0,
+            createdon: new Date().toISOString(),
+            estimatedclosedate: null
+          };
+        }
+        return prev;
       });
+      
+      try {
+        // Verify token validity first to prevent unnecessary API calls
+        const loggedIn = await isLoggedIn();
+        
+        if (!loggedIn) {
+          console.log("[Popup.jsx] Token invalid or expired, clearing token state");
+          setAccessToken(null);
+          setUser(null);
+          setError("Your session has expired. Please log in again.");
+          return;
+        }
+        
+        // Now fetch opportunity details
+        try {
+          console.log("[Popup.jsx] Calling fetchOpportunityDetails for ID:", oppId);
+          
+          // Direct call to the API utility function
+          await fetchOpportunityDetails(
+            token,
+            oppId,
+            (isLoading) => setLoading(isLoading),
+            setError,
+            setCurrentOpportunity,
+            setActivities
+          );
+          
+          console.log("[Popup.jsx] Successfully loaded opportunity details");
+          
+          // Also fetch closed opportunities for analytics in the background
+          handleFetchClosedOpportunities(token).catch(err => {
+            console.warn("[Popup.jsx] Error fetching closed opportunities:", err);
+            // Don't fail the main operation if this background task fails
+          });
+        } catch (apiError) {
+          // Handle API errors, especially authentication failures
+          if (apiError.message && (
+              apiError.message.includes("Authentication failed") ||
+              apiError.message.includes("401"))) {
+            console.error("[Popup.jsx] Authentication failed during API call:", apiError);
+            await logout(
+              setLoading,
+              setAccessToken,
+              setOpportunities,
+              setCurrentOpportunity,
+              setActivities,
+              setUser,
+              setError
+            );
+          } else {
+            console.error("[Popup.jsx] Error fetching opportunity details:", apiError);
+            setError(`Failed to fetch opportunity details: ${apiError.message}`);
+            
+            // If we fail to load details, clear the opportunity state to show the list view
+            setCurrentOpportunity(null);
+          }
+        }
+      } catch (error) {
+        console.error("[Popup.jsx] Error checking login status:", error);
+        setError("Failed to verify authentication status. Please try again.");
+        
+        // If we encounter an error, clear the opportunity state to show the list view
+        setCurrentOpportunity(null);
+      } finally {
+        setLoading(false);
+        stateTransitionLock.current = false;
+      }
+    } catch (error) {
+      console.error("[Popup.jsx] General error in handleFetchOpportunityDetails:", error);
+      setError("An unexpected error occurred");
+      setLoading(false);
+      stateTransitionLock.current = false;
+      
+      // If we encounter an error, clear the opportunity state to show the list view
+      setCurrentOpportunity(null);
     }
   };
 
@@ -101,11 +213,16 @@ const Popup = () => {
         
         stateTransitionLock.current = true;
         
-        // Check Supabase connection
-        const supabaseStatus = await checkSupabaseConnection();
-        if (!supabaseStatus.connected) {
-          console.warn("Supabase connection issue:", supabaseStatus.error);
-          // Continue with limited functionality
+        // Check Supabase connection but don't fail if there's an issue
+        try {
+          const supabaseStatus = await checkSupabaseConnection();
+          if (!supabaseStatus.connected) {
+            console.warn("Supabase connection issue:", supabaseStatus.error);
+            // Continue anyway - we can still use the app with limited functionality
+          }
+        } catch (supabaseError) {
+          console.warn("Error checking Supabase connection:", supabaseError);
+          // Continue anyway
         }
         
         // Notify service worker that popup is open
@@ -123,7 +240,7 @@ const Popup = () => {
           if (orgId) {
             chrome.storage.local.set({ "organizationId": orgId });
           }
-
+    
           if (!orgId) {
             // Wait and retry in 500ms
             await new Promise(resolve => setTimeout(resolve, 500));
@@ -154,9 +271,12 @@ const Popup = () => {
           const userData = await getCurrentUser();
           setUser(userData);
           
-          // Initialize subscription status
-          if (userData?.email) {
-            await initializeSubscriptions(userData);
+          try {
+            // Try to initialize subscriptions but don't fail if it doesn't work
+            await initializeSubscriptions();
+          } catch (subscriptionError) {
+            console.warn("Error initializing subscriptions, continuing with free tier:", subscriptionError);
+            setSubscription({ status: 'free', isActive: true });
           }
           
           console.log("[Popup.jsx] Got access token:", accessToken ? "yes" : "no");
@@ -174,7 +294,35 @@ const Popup = () => {
             
             // Fetch data
             if (oppId) {
-              await handleFetchOpportunityDetails(accessToken, oppId);
+              // Set a temporary loading state for better UX
+              setCurrentOpportunity({
+                opportunityid: oppId,
+                name: "Loading...",
+                loading: true
+              });
+              
+              console.log("[Popup.jsx] Fetching initial opportunity details:", oppId);
+              
+              // Fetch the opportunity details with a small timeout to ensure state is updated
+              setTimeout(async () => {
+                try {
+                  await fetchOpportunityDetails(
+                    accessToken,
+                    oppId,
+                    setLoading,
+                    setError,
+                    setCurrentOpportunity,
+                    setActivities
+                  );
+                  console.log("[Popup.jsx] Initial opportunity details loaded successfully");
+                } catch (fetchError) {
+                  console.error("[Popup.jsx] Error loading initial opportunity:", fetchError);
+                  // If there's an error, fall back to the list view
+                  setCurrentOpportunity(null);
+                  setCurrentOpportunityId(null);
+                  await handleFetchOpportunities(accessToken);
+                }
+              }, 100);
             } else {
               await handleFetchOpportunities(accessToken);
             }
@@ -365,80 +513,6 @@ const Popup = () => {
   };
 
   /**
-   * Fetch opportunity details and set state
-   */
-  const handleFetchOpportunityDetails = async (token, oppId) => {
-    try {
-      // Prevent concurrent operations
-      if (stateTransitionLock.current) {
-        console.log("[Popup.jsx] State transition in progress, deferring opportunity details fetch");
-        return;
-      }
-      
-      stateTransitionLock.current = true;
-      setLoading(true);
-      setError(null);
-      
-      // First check if the token is still valid
-      await isLoggedIn().then(async (loggedIn) => {
-        if (!loggedIn) {
-          // Token is invalid, show login screen
-          console.log("[Popup.jsx] Token invalid or expired, clearing token state");
-          setAccessToken(null);
-          setUser(null);
-          setError("Your session has expired. Please log in again.");
-          setLoading(false);
-          stateTransitionLock.current = false;
-          return;
-        }
-        
-        // Call the utility function to fetch opportunity details
-        try {
-          await fetchOpportunityDetails(
-            token, 
-            oppId, 
-            setLoading, 
-            setError, 
-            setCurrentOpportunity, 
-            setActivities
-          );
-          
-          // Also fetch closed opportunities for analytics
-          await handleFetchClosedOpportunities(token);
-        } catch (apiError) {
-          // Check if it's an authentication error
-          if (apiError.message.includes("Authentication failed") || 
-              apiError.message.includes("401")) {
-            console.error("Authentication failed during API call:", apiError);
-            
-            // Clear the token and show login screen
-            await logout(
-              setAccessToken,
-              setOpportunities,
-              setCurrentOpportunity,
-              setActivities,
-              null, // Don't set error yet
-              setLoading,
-              setUser // Add the user state setter
-            );
-            
-            setError("Your session has expired. Please log in again.");
-          } else {
-            console.error("Error fetching opportunity details:", apiError);
-            setError(`Failed to fetch opportunity details: ${apiError.message}`);
-          }
-        }
-      });
-    } catch (error) {
-      console.error("Error checking login status:", error);
-      setError("Failed to verify authentication status. Please try again.");
-    } finally {
-      setLoading(false);
-      stateTransitionLock.current = false;
-    }
-  };
-
-  /**
    * Fetch opportunities list and set state
    */
   const handleFetchOpportunities = async (token, userId = null) => {
@@ -467,7 +541,9 @@ const Popup = () => {
     }
   };
 
-  // Add this function to your Popup.jsx component
+  /**
+   * Handle refresh button click - reload current data
+   */
   const handleRefresh = async () => {
     try {
       // Prevent concurrent operations
@@ -506,7 +582,6 @@ const Popup = () => {
       setLoading(false);
     }
   };
-
 
   /**
    * Fetch all open opportunities for current user
@@ -613,124 +688,133 @@ const Popup = () => {
   };
 
   /**
-   * Handle logout action with state updates
+   * Handle opportunity selection by navigating the main CRM tab to the opportunity
    */
-  const handleLogout = async () => {
+  const handleOpportunitySelect = async (opportunityId) => {
     try {
-      // Prevent concurrent operations
-      if (stateTransitionLock.current || isLoggingOut) {
-        console.log("[Popup.jsx] State transition or logout in progress, deferring logout");
+      console.log("[Popup.jsx] Navigating to opportunity:", opportunityId);
+      
+      // Get all tabs and find the Dynamics CRM tab
+      const tabs = await chrome.tabs.query({ url: "*://*.crm.dynamics.com/*" });
+      
+      if (!tabs || tabs.length === 0) {
+        setError("No Dynamics CRM tab found");
         return;
       }
       
-      stateTransitionLock.current = true;
-      setIsLoggingOut(true);
+      // Assume the first CRM tab is the one we want to navigate
+      const crmTab = tabs[0];
       
-      // Call the enhanced logout function with all state setters
-      const result = await logout(
-        setAccessToken,
-        setOpportunities,
-        setCurrentOpportunity,
-        setActivities,
-        setError,
-        null, // Don't pass setLoading as we're using setIsLoggingOut instead
-        setUser // Add the user state setter
-      );
+      // Extract the base URL from the CRM tab
+      const baseUrl = crmTab.url.match(/(https:\/\/[^\/]+)/)[1];
       
-      if (result.success) {
-        console.log("[Popup.jsx] Logout successful");
-        // Clear opportunity references
-        lastOpportunityIdRef.current = null;
-        setCurrentOpportunityId(null);
-        
-        // Reset subscription status
-        setSubscription({
-          status: 'free',
-          isActive: true
-        });
-      } else {
-        console.error("Logout failed:", result.error);
-        setError(`Logout failed: ${result.error}`);
-      }
+      // Construct the opportunity URL
+      const opportunityUrl = `${baseUrl}/main.aspx?etn=opportunity&pagetype=entityrecord&id=${opportunityId}`;
+      
+      console.log("[Popup.jsx] Navigating CRM tab to:", opportunityUrl);
+      
+      // Update the CRM tab with the new URL - this navigates the tab to the opportunity
+      await chrome.tabs.update(crmTab.id, { url: opportunityUrl, active: true });
+      
+      // No need to close the popup manually as it will close automatically
+      // when the background tab is activated
+      
+    } catch (error) {
+      console.error("[Popup.jsx] Error navigating to opportunity:", error);
+      setError(`Could not navigate to opportunity: ${error.message}`);
+    }
+  };
+
+  /**
+   * Handle logout action with state updates
+   */
+  const handleLogout = async () => {
+    if (stateTransitionLock.current) {
+      console.log("[Popup.jsx] State transition or logout in progress, deferring logout");
+      return;
+    }
+  
+    stateTransitionLock.current = true;
+    setIsLoggingOut(true);
+    
+    try {
+      // Clear storage directly first to prevent race conditions
+      await chrome.storage.local.remove([
+        "accessToken", 
+        "expirationTime", 
+        "user", 
+        "subscription", 
+        "currentOpportunityId", 
+        "lastUpdated"
+      ]);
+      
+      // Clear all state in a specific order
+      setCurrentOpportunityId(null);
+      setCurrentOpportunity(null);
+      setOpportunities([]);
+      setActivities([]);
+      setClosedOpportunities([]);
+      lastOpportunityIdRef.current = null;
+      
+      // Clear credentials last to force login screen to appear
+      setAccessToken(null);
+      setUser(null);
+      
+      // Clear any errors
+      setError(null);
+      
+      console.log("[Popup.jsx] Logout successful - all state cleared");
     } catch (error) {
       console.error("Unexpected error during logout:", error);
       setError(`An unexpected error occurred during logout: ${error.message}`);
     } finally {
-      setIsLoggingOut(false);
       stateTransitionLock.current = false;
+      setIsLoggingOut(false);
     }
   };
 
   /**
-   * Handle back button click - carefully reset state to prevent loops
+   * Handle back button click by navigating the CRM tab to the opportunities list
    */
-  const handleBackToList = () => {
-    // Prevent concurrent operations
-    if (stateTransitionLock.current) {
-      console.log("[Popup.jsx] State transition in progress, deferring back navigation");
-      return;
-    }
-    
-    stateTransitionLock.current = true;
-    
+  const handleBackToList = async () => {
     try {
-      console.log("[Popup.jsx] Handling back button click");
+      console.log("[Popup.jsx] Navigating back to opportunities list");
       
-      // Clear opportunity ID references first
-      lastOpportunityIdRef.current = null;
-      chrome.storage.local.remove(["currentOpportunityId", "lastUpdated"], () => {
-        console.log("[Popup.jsx] Cleared opportunity ID from storage");
-      });
+      // Get all tabs and find the Dynamics CRM tab
+      const tabs = await chrome.tabs.query({ url: "*://*.crm.dynamics.com/*" });
       
-      // Clear opportunity details
+      if (!tabs || tabs.length === 0) {
+        setError("No Dynamics CRM tab found");
+        return;
+      }
+      
+      // Assume the first CRM tab is the one we want to navigate
+      const crmTab = tabs[0];
+      
+      // Extract the base URL from the CRM tab
+      const baseUrl = crmTab.url.match(/(https:\/\/[^\/]+)/)[1];
+      
+      // Construct the opportunities list URL
+      // This URL navigates to the My Open Opportunities view
+      const opportunitiesUrl = `${baseUrl}/main.aspx?pagetype=entitylist&etn=opportunity&viewid=00000000-0000-0000-00AA-000010001003&viewtype=1039`;
+      
+      console.log("[Popup.jsx] Navigating CRM tab to:", opportunitiesUrl);
+      
+      // Update the CRM tab with the new URL - this navigates the tab to the opportunities list
+      await chrome.tabs.update(crmTab.id, { url: opportunitiesUrl, active: true });
+      
+      // Also clear local storage and state for consistency
+      chrome.storage.local.remove(["currentOpportunityId", "lastUpdated"]);
       setCurrentOpportunity(null);
       setCurrentOpportunityId(null);
+      lastOpportunityIdRef.current = null;
       
-      // Fetch opportunities only after state is cleared
-      setTimeout(() => {
-        if (accessToken) {
-          handleFetchOpportunities(accessToken);
-        }
-        stateTransitionLock.current = false;
-      }, 100);
     } catch (error) {
-      console.error("Error in back navigation:", error);
-      stateTransitionLock.current = false;
+      console.error("[Popup.jsx] Error navigating to opportunities list:", error);
+      setError(`Could not navigate to opportunities list: ${error.message}`);
     }
   };
-
-  /**
-   * Handle opportunity selection
-   */
-  const handleOpportunitySelect = (opportunityId) => {
-    // Prevent loops - if already on this opportunity, do nothing
-    if (opportunityId === lastOpportunityIdRef.current && currentOpportunity) {
-      console.log("[Popup.jsx] Already showing this opportunity, skipping selection");
-      return;
-    }
-    
-    // Prevent concurrent operations
-    if (stateTransitionLock.current) {
-      console.log("[Popup.jsx] State transition in progress, deferring opportunity selection");
-      return;
-    }
-    
-    console.log("[Popup.jsx] Selecting opportunity:", opportunityId);
-    
-    // Update references and storage
-    lastOpportunityIdRef.current = opportunityId;
-    chrome.storage.local.set({ 
-      currentOpportunityId: opportunityId,
-      lastUpdated: Date.now()
-    });
-    
-    // Update state
-    setCurrentOpportunityId(opportunityId);
-    
-    // Fetch details
-    handleFetchOpportunityDetails(accessToken, opportunityId);
-  };
-
+  
   /**
    * Toggle auto-open preference
    */
@@ -758,6 +842,16 @@ const Popup = () => {
    */
   const renderContent = () => {
     try {
+      // Add explicit decision logging
+      console.log('[Popup] RENDER DECISION:', {
+        accessToken: !!accessToken,
+        currentOpportunityId,
+        hasCurrentOpportunity: !!currentOpportunity,
+        opportunityIdMatch: currentOpportunity?.opportunityid === currentOpportunityId,
+        loading,
+        stateTransitionLock: stateTransitionLock.current
+      });
+
       // Add explicit logging
       console.log('[Popup] RENDER CONTENT DEBUG:');
       console.log('[Popup] Organization ID:', organizationId);
@@ -806,7 +900,7 @@ const Popup = () => {
       // Important change: Check both currentOpportunityId and currentOpportunity
       // Only render opportunity detail when we have both
       if (currentOpportunityId && currentOpportunity) {
-        console.log('[Popup] Rendering opportunity detail view');
+        console.log('[Popup] Rendering opportunity detail view for:', currentOpportunityId);
         return (
           <OpportunityDetail 
             opportunity={currentOpportunity}

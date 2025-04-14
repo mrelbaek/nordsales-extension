@@ -5,7 +5,7 @@ import { PiCaretDownLight, PiCaretRightLight } from "react-icons/pi";
  * Accordion section with toggle functionality
  * 
  * @param {Object} props - Component props
- * @param {string} props.title - Section title
+ * @param {string|React.ReactNode} props.title - Section title (string or React element)
  * @param {boolean} props.isOpen - Whether section is expanded
  * @param {Function} props.onToggle - Function to call when toggling section
  * @param {React.ReactNode} props.children - Section content
@@ -25,10 +25,39 @@ const AccordionSection = ({ title, isOpen, onToggle, children }) => {
           borderBottom: isOpen ? "1px solid #e0e0e0" : "none"
         }}
       >
-        <div style={{ display: "flex", alignItems: "center" }}>
-          <span style={{ marginRight: "10px", fontSize: "16px", fontWeight: "bold", paddingTop: "4px"}}>{isOpen ? <PiCaretDownLight size={20}/> : <PiCaretRightLight size={20}/>}</span>
-          <h3 style={{ margin: "0", fontSize: "14px" }}>{title}</h3>
+        <div style={{ 
+          display: "flex", 
+          alignItems: "center", 
+          marginRight: "10px"
+        }}>
+          <span style={{ 
+            fontSize: "16px", 
+            fontWeight: "bold", 
+            paddingTop: "4px"
+          }}>
+            {isOpen ? <PiCaretDownLight size={20}/> : <PiCaretRightLight size={20}/>}
+          </span>
         </div>
+        
+        {/* Handle different title types */}
+        {typeof title === 'string' ? (
+          <h3 style={{ 
+            margin: "0", 
+            fontSize: "14px", 
+            flex: 1 
+          }}>
+            {title}
+          </h3>
+        ) : (
+          <div style={{ 
+            flex: 1, 
+            display: "flex", 
+            alignItems: "center", 
+            justifyContent: "space-between"
+          }}>
+            {title}
+          </div>
+        )}
       </div>
       
       {isOpen && (

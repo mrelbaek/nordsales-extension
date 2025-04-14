@@ -6,6 +6,8 @@ import Analytics from './Analytics';
 import TimelineLog from './TimelineLog';
 import BasicInfo from './BasicInfo';
 import SubscriptionStatus from '../SubscriptionStatus';
+import ProPill from '../common/ProPill';
+
 
 
 /**

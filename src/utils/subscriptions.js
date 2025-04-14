@@ -1,62 +1,103 @@
 import { supabase } from './supabase';
 
+export const featureAccessMap = {
+  // Free Tier
+  openOpportunitiesTracker: ['free', 'pro', 'team'],
+  basicStats: ['free', 'pro', 'team'],
+  simpleWinLossCounters: ['free', 'pro', 'team'],
+  limitedActivityTrends: ['free'],
 
-function mapSubscriptionStatus(dbStatus) {
-  // Map Supabase's "active" status to "pro"
-  if (dbStatus === 'active') return 'pro';
-  return dbStatus || 'free'; // Default to 'free' if null or undefined
-}
+  // Pro Tier
+  portfolioAnalytics: ['pro', 'team'],
+  winLossCharts: ['pro', 'team'],
+  salesCycleAnalytics: ['pro', 'team'],
+  fullActivityTrends: ['pro', 'team'],
+  opportunityStats: ['pro', 'team'],
+  activitiesCalendar: ['pro', 'team'],
+  fullTimelineLog: ['pro', 'team'],
+  salesCycleBenchmarks: ['pro', 'team'],
+  allChartsAndVisuals: ['pro', 'team'],
+
+  // Team (coming soon — stubbed for now)
+  benchmarkTeamPerformance: ['team'],
+  trackOpportunities: ['team'],
+  scheduledReports: ['team'],
+  commissionEstimator: ['team'],
+  customBranding: ['team']
+};
 
 /**
  * Get current user's subscription status
- * @param {string} email - User email
  * @returns {Promise<Object>} Subscription details
  */
-export async function getSubscriptionStatus(email) {
+export async function getSubscriptionStatus() {
   try {
-    console.log("getSubscriptionStatus called with email:", email);
+    // Get user info from Chrome storage instead of Supabase Auth
+    const { user } = await chrome.storage.local.get(["user"]);
     
-    if (!email) {
-      console.error("Email is required to check subscription status");
+    if (!user || !user.email) {
+      console.error("User not found in local storage");
       return {
         status: 'free',
         isActive: true
       };
     }
     
-    console.log("Checking subscription status for:", email);
+    console.log("Checking subscription status for email:", user.email);
     
-    // Query Supabase
-    const { data: userData, error: userError } = await supabase
+    // Look up user by email (we're not using Auth)
+    const { data: userData, error: fetchError } = await supabase
       .from('users')
-      .select('subscription_status, subscription_end_date, organization_id')
-      .eq('email', email)
+      .select('subscription_status, subscription_end_date, organization_id, uid')
+      .eq('email', user.email)
       .single();
-      
-    console.log("Supabase response:", userData);
     
-    if (userError) {
-      console.error("Error fetching user subscription data:", userError);
+    if (fetchError || !userData) {
+      console.error("Error fetching user data:", fetchError);
       return {
         status: 'free',
         isActive: true
       };
     }
     
-    // Map 'active' to 'pro' here
-    let mappedStatus = userData.subscription_status;
+    let mappedStatus = userData.subscription_status || 'free';
     if (mappedStatus === 'active') {
       mappedStatus = 'pro';
+    }
+    
+    // Check if organization has a subscription
+    if (userData.organization_id) {
+      const { data: orgData, error: orgError } = await supabase
+        .from('organizations')
+        .select('subscription_status, subscription_end_date, subscription_seats')
+        .eq('id', userData.organization_id)
+        .single();
+
+      if (!orgError && orgData && orgData.subscription_status) {
+        // Compare user vs org subscription, use the higher tier
+        const tiers = ['free', 'basic', 'pro', 'team'];
+        const userTier = tiers.indexOf(mappedStatus);
+        const orgTier = tiers.indexOf(orgData.subscription_status);
+        
+        if (orgTier > userTier) {
+          return {
+            status: orgData.subscription_status,
+            endDate: orgData.subscription_end_date || null,
+            isActive: !orgData.subscription_end_date || new Date(orgData.subscription_end_date) > new Date() || orgData.subscription_status === 'free',
+            isOrgSubscription: true
+          };
+        }
+      }
     }
     
     return {
       status: mappedStatus,
       endDate: userData.subscription_end_date || null,
-      isActive: true,
+      isActive: !userData.subscription_end_date || new Date(userData.subscription_end_date) > new Date() || mappedStatus === 'free',
       isOrgSubscription: false
     };
-  } catch (error) {
-    console.error("Error fetching subscription status:", error);
+  } catch (err) {
+    console.error("Error in getSubscriptionStatus:", err);
     return {
       status: 'free',
       isActive: true
@@ -128,50 +169,54 @@ export async function updateOrgSubscription(orgId, status, endDate, seats = 5) {
   }
 }
 
-
 /**
  * Check if feature is available for user's subscription level
  * @param {string} feature - Feature name
  * @param {string} subscriptionStatus - User's subscription status
  * @returns {boolean} Whether feature is available
  */
-export function hasFeatureAccess(feature, subscriptionStatus = 'free') {
-  // Feature access by subscription level
-  const featureAccess = {
-    'basic-analytics': ['free', 'basic', 'pro', 'enterprise'],
-    'advanced-analytics': ['basic', 'pro', 'enterprise'],
-    'opportunity-tracking': ['free', 'basic', 'pro', 'enterprise'],
-    'activity-monitoring': ['free', 'basic', 'pro', 'enterprise'],
-    'timeline-view': ['basic', 'pro', 'enterprise'],
-    'export-data': ['pro', 'enterprise'],
-    'api-access': ['pro', 'enterprise'],
-    'custom-dashboards': ['enterprise'],
-    'team-management': ['enterprise']
-  };
-  
-  // Check if feature exists and user's subscription is allowed
-  return featureAccess[feature] 
-    ? featureAccess[feature].includes(subscriptionStatus)
-    : false;
+export function hasFeatureAccess(featureName, subscriptionStatus = 'free') {
+  const allowedTiers = featureAccessMap[featureName] || [];
+  return allowedTiers.includes(subscriptionStatus);
 }
 
 /**
  * Track feature usage for analytics
- * @param {string} userId - User ID
  * @param {string} feature - Feature used
  * @param {Object} metadata - Additional metadata
  * @returns {Promise<Object>} Tracking result
  */
-export async function trackFeatureUsage(userId, feature, metadata = {}) {
+export async function trackFeatureUsage(feature, metadata = {}) {
   try {
-    if (!userId || !feature) {
-      throw new Error("User ID and feature are required");
+    if (!feature) {
+      throw new Error("Feature name is required");
     }
     
+    // Get current user from local storage
+    const { user } = await chrome.storage.local.get(["user"]);
+    
+    if (!user || !user.email) {
+      console.warn("Cannot track feature usage: No user in local storage");
+      return { success: false, error: "No user found" };
+    }
+    
+    // Find the user ID from the database
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('email', user.email)
+      .single();
+      
+    if (userError || !userData) {
+      console.warn("Cannot track feature usage: User not found in database");
+      return { success: false, error: userError };
+    }
+    
+    // Insert feature usage
     const { data, error } = await supabase
       .from('feature_usage')
       .insert([{
-        user_id: userId,
+        user_id: userData.id,
         feature: feature,
         used_at: new Date(),
         metadata: metadata
@@ -218,25 +263,27 @@ export async function getSubscriptionPrices() {
 
 /**
  * Get usage statistics for a user
- * @param {string} email - User email
  * @returns {Promise<Object>} Usage statistics
  */
-export async function getUserUsageStats(email) {
+export async function getUserUsageStats() {
   try {
-    if (!email) {
-      throw new Error("Email is required to fetch usage statistics");
+    // Get user info from local storage
+    const { user } = await chrome.storage.local.get(["user"]);
+    
+    if (!user || !user.email) {
+      throw new Error("No user found in local storage");
     }
     
-    // Get user ID first
+    // Get user ID from database
     const { data: userData, error: userError } = await supabase
       .from('users')
       .select('id')
-      .eq('email', email)
+      .eq('email', user.email)
       .single();
       
     if (userError) throw userError;
     
-    // Then get feature usage
+    // Get feature usage
     const { data: usageData, error: usageError } = await supabase
       .from('feature_usage')
       .select('feature, used_at')
@@ -282,49 +329,26 @@ export async function getUserUsageStats(email) {
   }
 }
 
-/**
- * Initialize subscription purchase process
- * @param {string} email - User email
- * @param {string} plan - Subscription plan
- * @returns {Promise<Object>} Checkout result with URL
- */
-export async function initiatePurchase(email, plan) {
+// Upgrade to Pro feature
+export async function openPaymentDialog() {
   try {
-    if (!email || !plan) {
-      throw new Error("Email and plan are required");
+    // Get user from local storage
+    const { user } = await chrome.storage.local.get(["user"]);
+    
+    const stripeCheckoutUrl = 'https://buy.stripe.com/8wMg1NaB77DG5wcfYY';
+    
+    if (user && user.email) {
+      // Track feature usage
+      await trackFeatureUsage('clicked_upgrade_cta', {
+        context: 'feature_gate',
+        plan: 'pro'
+      });
+    } else {
+      console.warn("User not logged in, skipping feature usage tracking.");
     }
-    
-    const response = await fetch('https://izeyvfbioqdftncourod.supabase.co/functions/v1/create-checkout', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        email,
-        plan
-      })
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Failed to create checkout: ${response.status} - ${errorText}`);
-    }
-    
-    const data = await response.json();
-    
-    return {
-      success: true,
-      checkoutUrl: data.url,
-      sessionId: data.sessionId,
-      error: null
-    };
+
+    window.open(stripeCheckoutUrl, '_blank');
   } catch (error) {
-    console.error("Error initiating purchase:", error);
-    return {
-      success: false,
-      checkoutUrl: null,
-      sessionId: null,
-      error
-    };
+    console.error("openPaymentDialog error:", error);
   }
 }

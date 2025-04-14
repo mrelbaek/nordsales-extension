@@ -4,6 +4,7 @@ import { calculateDaysBetween } from '../../utils/dateUtils';
 import AccordionSection from '../common/AccordionSection';
 import InfoIcon from '../common/InfoIcon';
 
+
 /**
  * Enhanced Statistics component with pill-style metrics
  * 
@@ -20,7 +21,8 @@ const Statistics = ({
   opportunity = {}, 
   closedOpportunities = [],
   isOpen, 
-  onToggle 
+  onToggle,
+  subscription
 }) => {
   const activitySummary = summarizeActivities(activities);
   
@@ -115,21 +117,10 @@ const Statistics = ({
 
   return (
     <AccordionSection
-      title={
-        <div style={{ display: "flex", alignItems: "center" }}>
-          <span>Statistics</span>
-          <div style={{ marginLeft: "auto" }}>
-            <InfoIcon 
-              title="Opportunity Statistics" 
-              content="This section provides key metrics about the opportunity, including timelines, activity tracking, and account performance indicators."
-              placement="bottom"
-              />
-            </div>
-        </div>
-      }
+      title="Statistics"
+      rightElement={subscription?.status && <ProPill status={subscription.status} />}
       isOpen={isOpen}
       onToggle={onToggle}
-      theme="primary"
     >
       {/* Key Metrics Section with Pill Style */}
       <div style={{ 
@@ -225,11 +216,11 @@ const Statistics = ({
       {/* Activity Summary Section */}
       <div>
         <h4 style={{ 
-          fontSize: "14px", 
+          fontSize: "13px", 
           fontWeight: "600", 
           marginTop: "0", 
           marginBottom: "16px",
-          color: "#333"
+          color: "#32325d"
         }}>
           Activity Summary
         </h4>

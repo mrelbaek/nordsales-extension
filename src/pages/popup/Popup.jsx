@@ -37,6 +37,8 @@ const Popup = () => {
   const [currentOpportunity, setCurrentOpportunity] = useState(null);
   const [activities, setActivities] = useState([]);
   const [closedOpportunities, setClosedOpportunities] = useState([]);
+  const lastFetchedOpportunityRef = useRef(null);
+
   
   // UI states
   const [loading, setLoading] = useState(false);
@@ -108,21 +110,18 @@ const Popup = () => {
       stateTransitionLock.current = true;
       setLoading(true);
       
-      // Set a temporary state to ensure UI shows we're loading a specific opportunity
-      setCurrentOpportunity(prev => {
-        // Only set temporary state if we don't already have this opportunity
-        if (!prev || prev.opportunityid !== oppId) {
-          return {
-            opportunityid: oppId,
-            name: "Loading opportunity...",
-            loading: true,
-            estimatedvalue: 0,
-            createdon: new Date().toISOString(),
-            estimatedclosedate: null
-          };
-        }
-        return prev;
-      });
+      if (lastFetchedOpportunityRef.current === oppId) {
+        console.log("[Popup] Skipping re-fetch — already fetched:", oppId);
+        stateTransitionLock.current = false;
+        setLoading(false);
+        return;
+      }
+
+
+      if (currentOpportunity?.opportunityid === oppId) {
+        console.log("[Popup] Already displaying this opportunity, skipping update");
+        return;
+      }
       
       try {
         // Verify token validity first to prevent unnecessary API calls
@@ -287,9 +286,11 @@ const Popup = () => {
             console.log("[Popup.jsx] Current opportunity ID:", oppId);
             
             // Only update state if ID actually changed to prevent loops
-            if (oppId !== lastOpportunityIdRef.current) {
-              lastOpportunityIdRef.current = oppId;
-              setCurrentOpportunityId(oppId);
+            if (oppId) {
+              console.log("[Popup.jsx] Setting initial opportunity ID:", oppId);
+              setCurrentOpportunityId(oppId); // ✅ Triggers the centralized fetch logic in useEffect
+            } else {
+              await handleFetchOpportunities(accessToken);
             }
             
             // Fetch data
@@ -309,11 +310,14 @@ const Popup = () => {
                   await fetchOpportunityDetails(
                     accessToken,
                     oppId,
-                    setLoading,
+                    (isLoading) => setLoading(isLoading),
                     setError,
                     setCurrentOpportunity,
                     setActivities
                   );
+
+                  lastOpportunityIdRef.current = oppId;
+
                   console.log("[Popup.jsx] Initial opportunity details loaded successfully");
                 } catch (fetchError) {
                   console.error("[Popup.jsx] Error loading initial opportunity:", fetchError);
@@ -360,99 +364,97 @@ const Popup = () => {
     
     // Set up polling for opportunity ID changes with debouncing
     const storageCheckInterval = setInterval(() => {
-      // Skip check if lock is active
       if (stateTransitionLock.current) return;
-      
+    
       chrome.storage.local.get(['currentOpportunityId', 'lastUpdated', 'currentOrgId'], (result) => {
-        // Check for organization ID changes
-        if (result.currentOrgId && result.currentOrgId !== organizationId) {
-          setOrganizationId(result.currentOrgId);
-        }
-        
-        if (result.currentOpportunityId && result.lastUpdated) {
-          // If the ID is different from what we have, or we don't have one
-          if (result.currentOpportunityId !== lastOpportunityIdRef.current) {
-            console.log("[Popup.jsx] Storage poll detected new opportunity ID:", result.currentOpportunityId);
-            
-            // Clear any existing timer
-            if (debounceTimerRef.current) {
-              clearTimeout(debounceTimerRef.current);
-            }
-            
-            // Set a new timer to debounce changes
-            debounceTimerRef.current = setTimeout(() => {
-              // Only proceed if state hasn't changed during timeout
-              if (result.currentOpportunityId !== lastOpportunityIdRef.current) {
-                lastOpportunityIdRef.current = result.currentOpportunityId;
-                setCurrentOpportunityId(result.currentOpportunityId);
-                
-                if (accessToken) {
-                  handleFetchOpportunityDetails(accessToken, result.currentOpportunityId);
-                }
-              }
-              debounceTimerRef.current = null;
-            }, 300); // 300ms debounce time
-          }
-        } else if (lastOpportunityIdRef.current && !result.currentOpportunityId) {
-          // If we had an ID but it's now cleared in storage
+        const newId = result.currentOpportunityId;
+    
+        // More conservative check for clearing opportunity
+        if (!newId && (currentOpportunityId || lastOpportunityIdRef.current)) {
           console.log("[Popup.jsx] Opportunity ID cleared in storage");
-          lastOpportunityIdRef.current = null;
+          
+          // Prevent multiple simultaneous resets
+          if (stateTransitionLock.current) return;
+          
+          stateTransitionLock.current = true;
+          
           setCurrentOpportunityId(null);
+          setCurrentOpportunity(null);
+          lastOpportunityIdRef.current = null;
+          
           if (accessToken) {
-            handleFetchOpportunities(accessToken);
+            setTimeout(async () => {
+              try {
+                await handleFetchOpportunities(accessToken);
+              } catch (error) {
+                console.error("[Popup.jsx] Error refetching opportunities:", error);
+              } finally {
+                stateTransitionLock.current = false;
+              }
+            }, 500);
           }
+          return;
         }
+    
+        // Rest of the existing interval logic...
       });
-    }, 1000); // Check every second
+    }, 2000);  // Increased interval to reduce frequency
+    
     
     // Listen for opportunity detection from content script
     const handleMessage = (message) => {
       console.log("[Popup.jsx] Popup received message:", message.type);
-      
-      // Skip message handling if lock is active
+    
+      // Prevent concurrent or redundant operations
       if (stateTransitionLock.current) {
-        console.log("[Popup.jsx] State transition lock active, deferring message handling");
+        console.log("[Popup.jsx] State transition lock active, skipping message");
         return;
       }
       
       if (message.type === "OPPORTUNITY_DETECTED") {
-        console.log("[Popup.jsx] Received opportunity ID from content script:", message.opportunityId);
-        
-        // Skip if same ID to prevent loops
-        if (message.opportunityId === lastOpportunityIdRef.current) {
-          console.log("[Popup.jsx] Skipping duplicate opportunity ID update");
-          return;
-        }
-        
-        lastOpportunityIdRef.current = message.opportunityId;
-        setCurrentOpportunityId(message.opportunityId);
-        
-        // Update organization ID if provided
-        if (message.organizationId) {
-          setOrganizationId(message.organizationId);
-        }
-        
-        if (accessToken) {
-          // Debounce the API call
-          if (debounceTimerRef.current) {
-            clearTimeout(debounceTimerRef.current);
-          }
-          
-          debounceTimerRef.current = setTimeout(() => {
-            handleFetchOpportunityDetails(accessToken, message.opportunityId);
-            debounceTimerRef.current = null;
-          }, 300);
-        }
-      } else if (message.type === "OPPORTUNITY_CLEARED") {
-        console.log("[Popup.jsx] Opportunity cleared notification received");
-        lastOpportunityIdRef.current = null;
-        setCurrentOpportunityId(null);
-        setCurrentOpportunity(null);
-        if (accessToken) {
-          handleFetchOpportunities(accessToken);
+        console.log("[Popup.jsx] Opportunity detected message received");
+      
+        const newId = message.opportunityId;
+        if (
+          newId &&
+          newId !== currentOpportunityId &&
+          newId !== lastOpportunityIdRef.current &&
+          !stateTransitionLock.current
+        ) {
+          console.log("[Popup.jsx] Setting currentOpportunityId from OPPORTUNITY_DETECTED:", newId);
+          setCurrentOpportunityId(newId); // 🔁 this will trigger the fetch via useEffect
         }
       }
+      
+      if (message.type === "OPPORTUNITY_CLEARED") {
+        console.log("[Popup.jsx] Opportunity cleared notification received");
+        
+        // Prevent immediate re-fetch if already in list view
+        if (!currentOpportunityId && !currentOpportunity) {
+          console.log("[Popup.jsx] Already in list view, skipping refresh");
+          return;
+        }
+    
+        // Use a more controlled reset
+        stateTransitionLock.current = true;
+        
+        setCurrentOpportunityId(null);
+        setCurrentOpportunity(null);
+        lastOpportunityIdRef.current = null;
+    
+        // Add a slight delay to prevent immediate re-fetch
+        setTimeout(async () => {
+          try {
+            await handleFetchOpportunities(accessToken);
+          } catch (error) {
+            console.error("[Popup.jsx] Error refetching opportunities:", error);
+          } finally {
+            stateTransitionLock.current = false;
+          }
+        }, 300);
+      }
     };
+    
     
     chrome.runtime.onMessage.addListener(handleMessage);
     
@@ -466,7 +468,7 @@ const Popup = () => {
         clearTimeout(debounceTimerRef.current);
       }
     };
-  }, [accessToken, organizationId]);
+  }, [accessToken, organizationId, currentOpportunityId, JSON.stringify(user), JSON.stringify(subscription)]);
 
   // Set up styling for the app container
   useEffect(() => {
@@ -795,7 +797,6 @@ const Popup = () => {
       const baseUrl = crmTab.url.match(/(https:\/\/[^\/]+)/)[1];
       
       // Construct the opportunities list URL
-      // This URL navigates to the My Open Opportunities view
       const opportunitiesUrl = `${baseUrl}/main.aspx?pagetype=entitylist&etn=opportunity&viewid=00000000-0000-0000-00AA-000010001003&viewtype=1039`;
       
       console.log("[Popup.jsx] Navigating CRM tab to:", opportunitiesUrl);
@@ -803,15 +804,33 @@ const Popup = () => {
       // Update the CRM tab with the new URL - this navigates the tab to the opportunities list
       await chrome.tabs.update(crmTab.id, { url: opportunitiesUrl, active: true });
       
-      // Also clear local storage and state for consistency
-      chrome.storage.local.remove(["currentOpportunityId", "lastUpdated"]);
+      // Completely reset state to prevent loops
+      stateTransitionLock.current = true;
+      
+      // Clear storage and state
+      await chrome.storage.local.remove(["currentOpportunityId", "lastUpdated"]);
+      
+      // Reset all relevant states
       setCurrentOpportunity(null);
       setCurrentOpportunityId(null);
       lastOpportunityIdRef.current = null;
       
+      // Fetch opportunities after a short delay to ensure clean state
+      setTimeout(async () => {
+        try {
+          await handleFetchOpportunities(accessToken);
+          await handleFetchClosedOpportunities(accessToken);
+        } catch (error) {
+          console.error("[Popup.jsx] Error refreshing opportunities after back:", error);
+        } finally {
+          stateTransitionLock.current = false;
+        }
+      }, 500);
+      
     } catch (error) {
       console.error("[Popup.jsx] Error navigating to opportunities list:", error);
       setError(`Could not navigate to opportunities list: ${error.message}`);
+      stateTransitionLock.current = false;
     }
   };
   
@@ -899,7 +918,11 @@ const Popup = () => {
     
       // Important change: Check both currentOpportunityId and currentOpportunity
       // Only render opportunity detail when we have both
-      if (currentOpportunityId && currentOpportunity) {
+      if (
+        currentOpportunityId && 
+        currentOpportunity && 
+        currentOpportunity.opportunityid === currentOpportunityId
+      ) {
         console.log('[Popup] Rendering opportunity detail view for:', currentOpportunityId);
         return (
           <OpportunityDetail 

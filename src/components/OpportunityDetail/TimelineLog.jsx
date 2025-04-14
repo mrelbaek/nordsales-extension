@@ -71,16 +71,6 @@ const TimelineLog = ({ activities = [], isOpen, onToggle }) => {
                   
                   {/* Activities for this date */}
                   <div style={{ position: "relative" }}>
-                    {/* Vertical line */}
-                    <div style={{
-                      position: "absolute",
-                      left: "7px",
-                      top: "8px",
-                      bottom: dateIndex === sortedDates.length - 1 ? "8px" : "0",
-                      width: "2px",
-                      backgroundColor: "#e0e0e0",
-                      zIndex: 1
-                    }} />
                     
                     {dateActivities.map((activity) => {
                       const activityLabel = getActivityLabel(activity.activitytypecode);
@@ -92,43 +82,29 @@ const TimelineLog = ({ activities = [], isOpen, onToggle }) => {
                           style={{
                             position: "relative",
                             marginBottom: "16px",
-                            paddingLeft: "32px",
+                            paddingLeft: "22px",
                             zIndex: 2
                           }}
                         >
-                          {/* Activity dot */}
-                          <div style={{
-                            position: "absolute",
-                            left: "0",
-                            top: "8px",
-                            width: "8px",
-                            height: "8px",
-                            borderRadius: "50%",
-                            backgroundColor: activityColor,
-                            border: "1px solid white",
-                            boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
-                            zIndex: 3
-                          }} />
-                          
                           {/* Activity content */}
                           <div style={{
                             backgroundColor: "#f9f9f9",
-                            borderLeft: `4px solid ${activityColor}`,
+                            borderLeft: `1px solid rgba(155, 155, 155, 0.28)`,
                             borderRadius: "4px",
                             padding: "12px",
                             boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
                             transition: "transform 0.2s ease, box-shadow 0.2s ease",
-                            cursor: "pointer"
+                            cursor: "default"
                           }}
                           onMouseEnter={(e) => {
                             e.currentTarget.style.transform = "translateY(-2px)";
                             e.currentTarget.style.boxShadow = "0 4px 6px rgba(0,0,0,0.1)";
-                            e.currentTarget.style.borderLeft = "4px solid #d4ff58";
+                            e.currentTarget.style.borderLeft = "1px solidrgb(155, 155, 155)";
                           }}
                           onMouseLeave={(e) => {
                             e.currentTarget.style.transform = "translateY(0)";
                             e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.08)";
-                            e.currentTarget.style.borderLeft = `4px solid ${activityColor}`;
+                            e.currentTarget.style.borderLeft = `1px solid rgba(155, 155, 155, 0.28)`;
                           }}
                           >
                             <div style={{ 
@@ -143,12 +119,6 @@ const TimelineLog = ({ activities = [], isOpen, onToggle }) => {
                                   fontSize: "12px"
                                 }}>
                                   {activity.subject || activityLabel}
-                                  <p style={{ fontSize: '0.75rem', color: '#999' }}>
-                                    Scheduled: {activity.scheduledstart}<br />
-                                    Actual: {activity.actualstart}<br />
-                                    Created: {activity.createdon}
-                                  </p>
-
                                 </div>
                                 
                                 <div style={{ 

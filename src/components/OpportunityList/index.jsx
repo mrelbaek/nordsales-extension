@@ -157,19 +157,10 @@ const OpportunityList = ({
       </div>
       
       {/* Won/Loss Distribution Section */}
-      <div style={{ padding: "0 16px" }}>
+      <div style={{ padding: "12px 16px 0px 16px" }}>
         <AccordionSection
-          title={
-            <div style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'space-between', 
-              width: '100%' 
-            }}>
-              <h3 style={{ margin: "0", fontSize: "14px", fontWeight: "600" }}>Win/Loss Distribution</h3>
-              {subscription?.status && <ProPill status={subscription.status} />}
-            </div>
-          }
+          title="Win/Loss Distribution"
+          rightElement={subscription?.status && <ProPill status={subscription.status} />}
           isOpen={accordionState.wonLost}
           onToggle={() => toggleAccordion('wonLost')}
         >
@@ -185,21 +176,10 @@ const OpportunityList = ({
       </div>
 
       {/* Sales Cycle Length Section */}
-      <div style={{ padding: "0 16px" }}>
+      <div style={{ padding: "12px 16px 0px 16px" }}>
         <AccordionSection
-          title={
-            <div style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'space-between', 
-              width: '100%' 
-            }}>
-              <h3 style={{ margin: 0, fontSize: "14px", fontWeight: "600" }}>
-                Sales Cycle Length
-              </h3>
-              {subscription?.status && <ProPill status={subscription.status} />}
-            </div>
-          }
+          title="Sales Cycle Length"
+          rightElement={subscription?.status && <ProPill status={subscription.status} />}
           isOpen={accordionState.salesCycle}
           onToggle={() => toggleAccordion('salesCycle')}
         >
@@ -215,21 +195,10 @@ const OpportunityList = ({
       </div>
 
       {/* Activities Chart Section */}
-      <div style={{ padding: "0 16px" }}>
+      <div style={{ padding: "12px 16px 0px 16px" }}>
         <AccordionSection
-          title={
-            <div style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'space-between', 
-              width: '100%' 
-            }}>
-              <h3 style={{ margin: 0, fontSize: "14px", fontWeight: "600" }}>
-                Activity Trends
-              </h3>
-              {subscription?.status && <ProPill status={subscription.status} />}
-            </div>
-          }
+          title="Activity Trends"
+          rightElement={subscription?.status && <ProPill status={subscription.status} />}
           isOpen={accordionState.activities}
           onToggle={() => toggleAccordion('activities')}
         >
@@ -245,7 +214,7 @@ const OpportunityList = ({
       </div>
 
       {/* Opportunities List Section */}
-      <div style={{ padding: "0 16px" }}>
+      <div style={{ padding: "12px 16px 0px 16px" }}>
         <AccordionSection
           title={`My Open Opportunities (${opportunities.length})`}
           isOpen={accordionState.opportunities}

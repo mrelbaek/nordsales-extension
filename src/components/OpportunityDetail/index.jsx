@@ -7,6 +7,7 @@ import TimelineLog from './TimelineLog';
 import BasicInfo from './BasicInfo';
 import SubscriptionStatus from '../SubscriptionStatus';
 import ProPill from '../common/ProPill';
+import FeatureGate from '../FeatureGate';
 
 
 
@@ -86,36 +87,6 @@ const OpportunityDetail = ({
 
       {/* Main Content Area - Scrollable */}
       <div style={{ flex: 1, overflow: "auto", padding: "0 16px 16px 16px" }}>
-      
-        {/* Action Buttons 
-        <div style={{ 
-          display: "flex", 
-          gap: "10px", 
-          margin: "16px 0" 
-        }}>
-          <button style={{ 
-            flex: 1, 
-            padding: "10px 0", 
-            backgroundColor: "white", 
-            border: "1px solid #ccc", 
-            borderRadius: "6px", 
-            cursor: "pointer" 
-          }}>
-            Save
-          </button>
-          <button style={{ 
-            flex: 1, 
-            padding: "10px 0", 
-            backgroundColor: "white", 
-            border: "1px solid #ccc", 
-            borderRadius: "6px", 
-            cursor: "pointer" 
-          }}>
-            Add to list
-          </button>
-        </div>
-      */} 
-
 
         {/* Statistics Section */}
         <Statistics 

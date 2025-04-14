@@ -44,6 +44,33 @@ async function navigateToOpportunity(tabId, opportunityId) {
     // Navigate the tab to the opportunity
     console.log(`Navigating tab ${tabId} to opportunity ${opportunityId}`);
     await chrome.tabs.update(tabId, { url: opportunityUrl });
+
+    // After navigation, wait and re-check for opportunity
+    setTimeout(() => {
+      chrome.tabs.sendMessage(tabId, { type: "CHECK_OPPORTUNITY_ID" }, (response) => {
+        if (chrome.runtime.lastError) {
+          console.warn("CHECK_OPPORTUNITY_ID error:", chrome.runtime.lastError.message);
+          return;
+        }
+
+        if (response && response.opportunityId) {
+          console.log("Got opportunity ID after navigation:", response.opportunityId);
+          chrome.storage.local.set({
+            currentOpportunityId: response.opportunityId,
+            lastUpdated: Date.now()
+          });
+          chrome.runtime.sendMessage({
+            type: "OPPORTUNITY_DETECTED",
+            opportunityId: response.opportunityId
+          });
+        }
+      });
+    }, 1500); 
+
+    // Wait and re-check for opportunity ID
+    setTimeout(() => {
+      pollForOpportunityChanges(tabId);
+    }, 1000);
     
     // Close the extension popup if it's open
     // Note: This doesn't seem to be directly possible, but the navigation should cause the popup to close
@@ -196,12 +223,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   
   if (message.type === "OPPORTUNITY_CLEARED") {
-    console.log("Opportunity cleared");
-    chrome.storage.local.remove(['currentOpportunityId', 'lastUpdated']);
+    // Add a debounce mechanism
+    if (this.lastClearedTimestamp && (Date.now() - this.lastClearedTimestamp < 500)) {
+      console.log("Duplicate opportunity clear message, skipping");
+      return;
+    }
     
-    // Try to forward to popup if open
+    this.lastClearedTimestamp = Date.now();
+    
+    // Forward the message
     chrome.runtime.sendMessage(message).catch(err => {
-      console.log("Could not forward message to side panel");
+      console.log("Could not forward message to side panel", err);
     });
     
     sendResponse({ success: true });

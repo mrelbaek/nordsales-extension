@@ -46,7 +46,6 @@ const WonLostChart = ({ closedOpportunities = [] }) => {
   
   // Generate chart data from closed opportunities
   const chartData = useMemo(() => {
-    console.log('[WonLostChart] Processing closed opportunities:', closedOpportunities?.length || 0);
     
     if (!closedOpportunities || closedOpportunities.length === 0) {
       return {
@@ -94,9 +93,7 @@ const WonLostChart = ({ closedOpportunities = [] }) => {
         return false;
       }
     });
-    
-    console.log('[WonLostChart] Opportunities in last 12 months:', relevantOpportunities.length);
-    
+        
     // Count won/lost opportunities by month
     const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     
@@ -119,10 +116,6 @@ const WonLostChart = ({ closedOpportunities = [] }) => {
       }
     });
     
-    console.log('[WonLostChart] Data by month:', {
-      won: wonByMonth,
-      lost: lostByMonth
-    });
     
     return {
       labels: monthLabels,

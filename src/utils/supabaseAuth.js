@@ -8,7 +8,6 @@ import { supabase } from './supabase';
  */
 export async function syncUserWithSupabase(user) {
   try {
-    console.log("Starting syncUserWithSupabase with user:", user);
     
     if (!user || !user.email || user.email === "unknown@example.com") {
       console.error("Invalid user data for Supabase sync:", user);
@@ -17,20 +16,16 @@ export async function syncUserWithSupabase(user) {
     
     const domain = user.email.split('@')[1] || 'unknown.com';
     const orgId = user.organizationId || `org_${domain.replace(/\./g, '_')}`;
-    
-    console.log("Extracted domain:", domain, "Organization ID:", orgId);
-    
+        
     // Update organization
     try {
       await updateOrganization(orgId, domain);
-      console.log("Organization updated successfully");
     } catch (orgError) {
       console.error("Error updating organization:", orgError);
       // Continue anyway - we still want to try creating the user
     }
     
     // Check if user exists using REST API directly to avoid 406 errors
-    console.log("Checking if user exists:", user.email);
     let existingUser = null;
     let isNewUser = true;
     let loginCount = 0;
@@ -47,7 +42,7 @@ export async function syncUserWithSupabase(user) {
         existingUser = data;
         isNewUser = false;
         loginCount = existingUser.login_count || 0;
-        console.log("Found existing user:", existingUser);
+        
       } else if (error) {
         // Log but don't fail the operation
         console.warn("Error checking existing user:", error);
@@ -79,10 +74,7 @@ export async function syncUserWithSupabase(user) {
       userData.first_login = now.toISOString();
       // Add trial end date for new users
       userData.trial_ends_at = trialEndDate.toISOString();
-      console.log("Creating new user with data:", userData);
-    } else {
-      console.log("Updating existing user with data:", userData);
-    }
+    } 
     
     try {
       // Explicitly set headers for the upsert call
@@ -95,9 +87,8 @@ export async function syncUserWithSupabase(user) {
       if (error) {
         console.error("Error upserting user:", error);
         // Don't throw, we'll continue with local data
-      } else {
-        console.log("User successfully synchronized with Supabase");
-      }
+      } 
+
     } catch (upsertError) {
       console.error("Exception during user upsert:", upsertError);
       // Continue with local operation - don't block the extension
@@ -134,7 +125,6 @@ export async function syncUserWithSupabase(user) {
  * @returns {Promise<void>}
  */
 async function updateOrganization(orgId, domain) {
-  console.log("Updating organization:", orgId, domain);
   
   try {
     const { error } = await supabase
@@ -153,7 +143,6 @@ async function updateOrganization(orgId, domain) {
       throw error;
     }
     
-    console.log("Organization updated successfully");
   } catch (err) {
     console.error("Error in updateOrganization:", err);
     throw err;

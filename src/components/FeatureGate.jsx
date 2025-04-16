@@ -28,22 +28,14 @@ const FeatureGate = ({
 
   useEffect(() => {
     const checkAccess = async () => {
-      try {
-        // Log what we're using to check access to help debug
-        console.log(`[FeatureGate] Checking access for ${featureName}`, {
-          externalSub,
-          subscriptionStatus
-        });
-        
+      try { 
         const sub = externalSub || await getSubscriptionStatus();
         setSubscription(sub);
         
         // Determine which status to use for access check
         const statusToCheck = subscriptionStatus || (sub && sub.status) || 'free';
-        console.log(`[FeatureGate] Using status for access check:`, statusToCheck);
         
         const access = hasFeatureAccess(featureName, statusToCheck);
-        console.log(`[FeatureGate] Access result:`, access);
         setHasAccess(access);
       } catch (error) {
         console.error(`Error checking access for ${featureName}:`, error);
@@ -64,13 +56,6 @@ const FeatureGate = ({
       </div>
     );
   }
-  
-  // Add debug info to help diagnose issues
-  console.log(`[FeatureGate] Render state for ${featureName}:`, {
-    hasAccess,
-    subscriptionStatus: subscriptionStatus || (subscription && subscription.status) || 'unknown',
-    loading
-  });
 
   // ✅ Full access
   if (hasAccess) {

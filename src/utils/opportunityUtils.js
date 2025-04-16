@@ -56,7 +56,6 @@ export const getCurrentOrgId = async () => {
     // Use whichever is available
     if (currentOrgId || organizationId) {
       const usedOrgId = currentOrgId || organizationId;
-      console.log("[OppUtil] Found organization ID in storage:", usedOrgId);
       return usedOrgId;
     }
     
@@ -74,7 +73,7 @@ export const getCurrentOrgId = async () => {
               (response) => {
                 // Use runtime.lastError to check for errors
                 if (chrome.runtime.lastError) {
-                  console.warn("Error sending message:", chrome.runtime.lastError);
+                  console.warn("Error sending message:", chrome.runtime.lastError?.message || chrome.runtime.lastError);
                   reject(chrome.runtime.lastError);
                   return;
                 }
@@ -169,10 +168,6 @@ export const getCurrentUserId = async (token) => {
       formattedToken = `Bearer ${token}`;
     }
 
-    console.log(`[OppUtil][getCurrentUserId] Fetching current user with WhoAmI endpoint: ${baseUrl}/WhoAmI`);
-    console.log(`[OppUtil][getCurrentUserId] Using token format: ${formattedToken.substring(0, 20)}...`);
-    console.log("[OppUtil][getCurrentUserId] Token debug info:", debugToken(token));
-
     const response = await fetch(`${baseUrl}/WhoAmI`, {
       method: 'GET',
       headers: {
@@ -183,11 +178,6 @@ export const getCurrentUserId = async (token) => {
         "Content-Type": "application/json"
       }
     });
-    
-    // Log full response status for debugging
-    console.log(`[OppUtil][getCurrentUserId] WhoAmI URL used: ${baseUrl}/WhoAmI`);
-    console.log(`[OppUtil][getCurrentUserId] WhoAmI response status: ${response.status} token: ${token}`);
-    console.log("[OppUtil][getCurrentUserId] Token at WhoAmI call:", token?.substring(0, 30));
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -203,18 +193,13 @@ export const getCurrentUserId = async (token) => {
     
     const data = await response.json();
     
-    // Log the full response for debugging
-    console.log("[OppUtil][getCurrentUserId] WhoAmI response data:", JSON.stringify(data, null, 2));
-    
     // Check for UserId in WhoAmIResponse format
     if (data.UserId) {
-      console.log(`[OppUtil][getCurrentUserId] Found UserId: ${data.UserId}`);
       return data.UserId;
     }
     
     // Some Dynamics environments might wrap the response
     if (data.value && data.value.UserId) {
-      console.log(`[OppUtil][getCurrentUserId] Found UserId in value property: ${data.value.UserId}`);
       return data.value.UserId;
     }
     
@@ -222,7 +207,6 @@ export const getCurrentUserId = async (token) => {
     const possibleUserIdProperties = ['userId', 'userid', 'user_id', 'id'];
     for (const prop of possibleUserIdProperties) {
       if (data[prop]) {
-        console.log(`[OppUtil][getCurrentUserId] Found user ID in property ${prop}: ${data[prop]}`);
         return data[prop];
       }
     }
@@ -246,7 +230,6 @@ export const getCurrentOpportunityId = async () => {
     const storedData = await chrome.storage.local.get(['currentOpportunityId']);
     
     if (storedData.currentOpportunityId) {
-      console.log("[OppUtil] Found opportunity ID in storage:", storedData.currentOpportunityId);
       return storedData.currentOpportunityId;
     }
     
@@ -263,12 +246,10 @@ export const getCurrentOpportunityId = async () => {
             (response) => {
               // Use runtime.lastError to check for errors
               if (chrome.runtime.lastError) {
-                console.warn("Error sending message:", chrome.runtime.lastError);
+                console.warn("Error sending message:", chrome.runtime.lastError?.message || chrome.runtime.lastError);
                 resolve(null);
                 return;
               }
-
-              console.log("[OppUtil] Content script response:", response);
               resolve(response?.opportunityId || null);
             }
           );
@@ -293,7 +274,6 @@ export const getCurrentOpportunityId = async () => {
  * @returns {Promise<Array>} Array of activity objects
  */
 export const fetchActivitiesForOpportunity = async (token, opportunityId) => {
-  console.log(`[OppUtil] Attempting to fetch activities for opportunity: ${opportunityId}`);
   
   const baseUrl = await getDynamicsBaseUrl();
   if (!baseUrl) {
@@ -302,7 +282,6 @@ export const fetchActivitiesForOpportunity = async (token, opportunityId) => {
   }
   
   const activitiesUrl = `${baseUrl}/activitypointers?$filter=_regardingobjectid_value eq '${opportunityId}'&$select=activityid,subject,activitytypecode,actualstart,actualend,createdon,scheduledstart`;
-  console.log("[OppUtil] FETCHING ACTIVITIES FROM:", activitiesUrl);
 
   try {
     const response = await fetch(activitiesUrl, {
@@ -313,8 +292,6 @@ export const fetchActivitiesForOpportunity = async (token, opportunityId) => {
         "OData-Version": "4.0"
       }
     });
-
-    console.log(`[OppUtil] Activities API response status: ${response.status}`);
     
     // Handle authentication error
     if (response.status === 401) {
@@ -328,7 +305,6 @@ export const fetchActivitiesForOpportunity = async (token, opportunityId) => {
     }
 
     const data = await response.json();
-    console.log(`[OppUtil] Received ${data.value?.length || 0} activities`);
     return data.value || [];
   } catch (error) {
     console.error("Error fetching activities:", error);
@@ -360,8 +336,6 @@ export const fetchOpportunityDetails = async (
     setLoading(true);
     setError(null);
     
-    console.log(`[OppUtil][fetchOpportunityDetails] Attempting to fetch opportunity details for ID: ${oppId}`);
-    
     // Get base URL
     const baseUrl = await getDynamicsBaseUrl();
     if (!baseUrl) {
@@ -383,7 +357,6 @@ export const fetchOpportunityDetails = async (
     
     // Try each format until one works
     for (const url of formats) {
-      console.log(`[OppUtil][fetchOpportunityDetails] Trying URL format: ${url}`);
       
       try {
         const response = await fetch(url, {
@@ -395,9 +368,7 @@ export const fetchOpportunityDetails = async (
             "Content-Type": "application/json"
           },
         });
-        
-        console.log(`[OppUtil][fetchOpportunityDetails] Response status for ${url}: ${response.status}`);
-        
+                
         // Check for authentication error
         if (response.status === 401) {
           authFailed = true;
@@ -421,7 +392,7 @@ export const fetchOpportunityDetails = async (
           text: await response.text()
         };
       } catch (err) {
-        console.log(`[OppUtil][fetchOpportunityDetails] Error with format ${url}: ${err.message}`);
+        console.warn(`[OppUtil][fetchOpportunityDetails] Error with format ${url}: ${err.message}`);
         lastError = {
           message: err.message,
           url: url
@@ -440,7 +411,6 @@ export const fetchOpportunityDetails = async (
     }
     
     const data = await successResponse.json();
-    console.log('[OppUtil][fetchOpportunityDetails] Opportunity data received:', data);
     
     // If the response is a collection, take the first item
     if (data.value && Array.isArray(data.value) && data.value.length > 0) {
@@ -452,8 +422,6 @@ export const fetchOpportunityDetails = async (
     // Fetch activities for this opportunity
     const activityData = await fetchActivitiesForOpportunity(token, oppId);
     setActivities(activityData);
-    console.log('[OppUtil][fetchOpportunityDetails] Activities data received:', activityData);
-
     
   } catch (error) {
     console.error("[OppUtil][fetchOpportunityDetails] Error fetching opportunity details:", error);
@@ -498,9 +466,7 @@ export const fetchOpportunitiesWithActivities = async (
     
     // Build the URL to fetch open opportunities for current user
     const url = `${baseUrl}/opportunities?$filter=statecode eq 0 and _ownerid_value eq ${currentUserId}&$select=name,opportunityid,_customerid_value,createdon,statecode,estimatedvalue,estimatedclosedate,actualclosedate&$expand=customerid_account($select=name)`;
-    
-    console.log(`✅ [OppUtil][fetchOpportunitiesWithActivities] Fetching opportunities list from ${url}`);
-    
+        
     const response = await fetch(url, {
       headers: { 
         "Authorization": `${token}`,
@@ -509,9 +475,6 @@ export const fetchOpportunitiesWithActivities = async (
         "OData-Version": "4.0"
       },
     });
-
-    console.log(`[OppUtil][fetchOpportunitiesWithActivities] Response status: ${response.status}`);
-    console.log(`[OppUtil][fetchOpportunitiesWithActivities] Token used: ${token}`);
     
     if (response.status === 401) {
       console.warn("[OppUtil][fetchOpportunitiesWithActivities] Status 401: Authentication token expired or invalid.");
@@ -532,7 +495,6 @@ export const fetchOpportunitiesWithActivities = async (
     }
 
     const data = await response.json();
-    console.log(`[OppUtil][fetchOpportunitiesWithActivities] Received ${data.value?.length || 0} opportunities`);
     
     // Fetch activities for each opportunity
     const opportunitiesWithActivities = await Promise.all(
@@ -637,9 +599,7 @@ export const fetchMyOpenOpportunities = async (
     if (!currentUserId) {
       throw new Error("[OppUtil][fetchMyOpenOpportunities] Could not determine current user ID");
     }
-    
-    console.log("[OppUtil][fetchMyOpenOpportunities] Fetching opportunities for user ID:", currentUserId);
-    
+        
     // Build the URL to fetch open opportunities for current user
     const url = `${baseUrl}/opportunities?$filter=statecode eq 0 and _ownerid_value eq ${currentUserId}&$select=name,opportunityid,_customerid_value,createdon,statecode,estimatedvalue,estimatedclosedate,actualclosedate&$expand=customerid_account($select=name)`;
     
@@ -671,8 +631,7 @@ export const fetchMyOpenOpportunities = async (
     }
     
     const data = await response.json();
-    console.log(`[OppUtil] Received ${data.value?.length || 0} open opportunities`);
-    
+
     // Set opportunities in state
     setOpportunities(data.value || []);
   } catch (error) {
@@ -718,9 +677,6 @@ export const fetchClosedOpportunities = async (
     // Build the URL to fetch closed opportunities for current user
     const url = `${baseUrl}/opportunities?$filter=statecode ne 0 and _ownerid_value eq ${currentUserId}&$select=name,statecode,_customerid_value,opportunityid,totalamount,actualclosedate,totaldiscountamount,exchangerate,createdon&$orderby=actualclosedate desc`;
     
-    console.log("[OppUtil][fetchClosedOpportunities] Fetching closed opportunities...");
-    console.log("[OppUtil][fetchClosedOpportunities] closed opportunity URL:", url);
-    
     const response = await fetch(url, {
       headers: {
         "Authorization": `${token}`,
@@ -749,7 +705,6 @@ export const fetchClosedOpportunities = async (
     }
     
     const data = await response.json();
-    console.log(`[OppUtil][fetchClosedOpportunities] Received ${data.value?.length || 0} closed opportunities`);
     
     // Filter out opportunities without closing date
     const validOpportunities = (data.value || []).filter(opp => 

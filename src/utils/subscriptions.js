@@ -47,9 +47,7 @@ export async function getSubscriptionStatus() {
         isActive: true
       };
     }
-    
-    console.log("Checking subscription status for email:", user.email);
-    
+        
     // Look up user by email with explicit headers
     const { data: userData, error: fetchError } = await supabase
       .from('users')

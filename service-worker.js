@@ -10,11 +10,9 @@ function extractOrgIdFromUrl(url) {
   const matches = url.match(orgPattern);
   
   if (matches && matches.length > 1) {
-    console.log("Organization ID detected:", matches[1]);
     return matches[1];
   }
   
-  console.log("Could not extract organization ID from URL:", url);
   return null;
 }
 
@@ -25,14 +23,14 @@ async function navigateToOpportunity(tabId, opportunityId) {
     const tab = await chrome.tabs.get(tabId);
     
     if (!tab || !tab.url || !tab.url.includes('crm.dynamics.com')) {
-      console.log("Tab is not a Dynamics CRM tab");
+      console.warn("Tab is not a Dynamics CRM tab");
       return false;
     }
     
     // Extract the base URL from the tab
     const match = tab.url.match(/(https:\/\/[^\/]+)/);
     if (!match) {
-      console.log("Could not extract base URL from tab");
+      console.warn("Could not extract base URL from tab");
       return false;
     }
     
@@ -42,7 +40,6 @@ async function navigateToOpportunity(tabId, opportunityId) {
     const opportunityUrl = `${baseUrl}/main.aspx?etn=opportunity&pagetype=entityrecord&id=${opportunityId}`;
     
     // Navigate the tab to the opportunity
-    console.log(`Navigating tab ${tabId} to opportunity ${opportunityId}`);
     await chrome.tabs.update(tabId, { url: opportunityUrl });
 
     // After navigation, wait and re-check for opportunity
@@ -54,7 +51,6 @@ async function navigateToOpportunity(tabId, opportunityId) {
         }
 
         if (response && response.opportunityId) {
-          console.log("Got opportunity ID after navigation:", response.opportunityId);
           chrome.storage.local.set({
             currentOpportunityId: response.opportunityId,
             lastUpdated: Date.now()
@@ -77,7 +73,7 @@ async function navigateToOpportunity(tabId, opportunityId) {
     
     return true;
   } catch (error) {
-    console.error("Error navigating to opportunity:", error);
+    console.warn("Error navigating to opportunity:", error);
     return false;
   }
 }
@@ -97,12 +93,12 @@ function pollForOpportunityChanges(tabId) {
       
       chrome.tabs.sendMessage(tabId, { type: "CHECK_OPPORTUNITY_ID" }, response => {
         if (chrome.runtime.lastError) {
-          console.log("Message error:", chrome.runtime.lastError.message);
+          console.error("Message error:", chrome.runtime.lastError.message);
           chrome.scripting.executeScript({
             target: { tabId },
             files: ["contentScript.js"]
           }).catch(err => {
-            console.log("Error re-injecting content script:", err);
+            console.error("Error re-injecting content script:", err);
           });
           return;
         }
@@ -152,11 +148,9 @@ function startOpportunityPolling(tabId) {
 // Listen for tab updates
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === 'complete' && tab.url && tab.url.includes('crm.dynamics.com')) {
-    console.log("Dynamics CRM tab updated:", tabId);
     
     const orgId = extractOrgIdFromUrl(tab.url);
     if (orgId) {
-      console.log("Stored organization ID from tab update:", orgId);
       chrome.storage.local.set({ currentOrgId: orgId });
     }
     
@@ -203,10 +197,8 @@ chrome.action.onClicked.addListener((tab) => {
 
 // Handle messages from popup or content script
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  console.log("Service worker received message:", message.type);
   
   if (message.type === "OPPORTUNITY_DETECTED") {
-    console.log("Received opportunity ID:", message.opportunityId);
     
     chrome.storage.local.set({
       currentOpportunityId: message.opportunityId,
@@ -215,7 +207,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     
     // Try to forward to popup if open
     chrome.runtime.sendMessage(message).catch(err => {
-      console.log("Could not forward message to side panel (probably not open)");
+      console.warn("Could not forward message to side panel (probably not open)");
     });
     
     sendResponse({ success: true });
@@ -233,7 +225,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     
     // Forward the message
     chrome.runtime.sendMessage(message).catch(err => {
-      console.log("Could not forward message to side panel", err);
+      console.warn("Could not forward message to side panel", err);
     });
     
     sendResponse({ success: true });
@@ -241,50 +233,56 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   
   if (message.type === "POPUP_OPENED") {
-    console.log("Side panel opened, checking for current opportunity");
-    // Find active Dynamics tab
     chrome.tabs.query({ active: true, url: "*://*.crm.dynamics.com/*" }, (tabs) => {
       if (tabs && tabs.length > 0) {
         const currentDynamicsTab = tabs[0].id;
-        
+  
         chrome.tabs.get(currentDynamicsTab).then(tab => {
           const orgId = extractOrgIdFromUrl(tab.url);
           if (orgId) {
             chrome.storage.local.set({ currentOrgId: orgId });
           }
-          
-          chrome.tabs.sendMessage(currentDynamicsTab, { type: "CHECK_OPPORTUNITY_ID" }, response => {
-            if (chrome.runtime.lastError) {
-              console.log("Error communicating with content script:", chrome.runtime.lastError.message);
-              return;
-            }
-            
-            if (response && response.opportunityId) {
-              console.log("Got opportunity ID from content script:", response.opportunityId);
-              
-              chrome.storage.local.set({
-                currentOpportunityId: response.opportunityId,
-                lastUpdated: Date.now()
-              });
-              
-              chrome.runtime.sendMessage({
-                type: "OPPORTUNITY_DETECTED",
-                opportunityId: response.opportunityId,
-                organizationId: response.organizationId || orgId
-              }).catch(err => {
-                console.log("Could not send to side panel:", err);
-              });
-            }
+  
+          // ✅ Ensure contentScript is injected
+          chrome.scripting.executeScript({
+            target: { tabId: currentDynamicsTab },
+            files: ["contentScript.js"]
+          }).then(() => {
+            chrome.tabs.sendMessage(currentDynamicsTab, { type: "CHECK_OPPORTUNITY_ID" }, response => {
+              if (chrome.runtime.lastError) {
+                console.warn("Error communicating with content script:", chrome.runtime.lastError.message);
+                return;
+              }
+  
+              if (response && response.opportunityId) {
+                chrome.storage.local.set({
+                  currentOpportunityId: response.opportunityId,
+                  lastUpdated: Date.now()
+                });
+  
+                chrome.runtime.sendMessage({
+                  type: "OPPORTUNITY_DETECTED",
+                  opportunityId: response.opportunityId,
+                  organizationId: response.organizationId || orgId
+                }).catch(err => {
+                  console.warn("Could not send to side panel:", err);
+                });
+              }
+            });
+          }).catch(err => {
+            console.error("Error injecting content script from POPUP_OPENED:", err);
           });
+  
         }).catch(err => {
-          console.log("Tab no longer exists:", err);
+          console.warn("Tab no longer exists:", err);
         });
       }
     });
-    
+  
     sendResponse({ success: true });
     return true;
   }
+  
   
   // NEW HANDLER: Navigate to opportunity in the current tab
   if (message.type === "NAVIGATE_TO_OPPORTUNITY") {
@@ -314,7 +312,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // Handle extension installation or update
 chrome.runtime.onInstalled.addListener(() => {
-  console.log("NordSales extension installed/updated");
+  console.log("Lens extension installed/updated");
   chrome.storage.local.get(['autoOpen', 'currentOrgId'], (result) => {
     if (result.autoOpen === undefined) {
       chrome.storage.local.set({ autoOpen: true });

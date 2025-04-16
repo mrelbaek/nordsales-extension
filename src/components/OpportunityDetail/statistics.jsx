@@ -52,29 +52,19 @@ const Statistics = ({
     // Extract the account ID (with a delay if necessary)
     const calculateWinLossRatio = () => {
       const accountId = opportunity?._customerid_value;
-
-      console.log("[statistics] Current opportunity:", opportunity);
-      console.log("[statistics] Account ID from opportunity:", accountId);
-      console.log("[statistics] Closed opportunities count:", closedOpportunities.length);
       
       // Debug the first few closed opportunities
       if (closedOpportunities.length > 0) {
-        console.log("[statistics] First closed opportunity sample:", closedOpportunities[0]);
-        // Log all properties of the first opportunity to see structure
-        console.log("[statistics] All properties of first closed opportunity:");
         Object.keys(closedOpportunities[0]).forEach(key => {
-          console.log(`${key}: ${closedOpportunities[0][key]}`);
         });
       }
       
       if (!accountId || !closedOpportunities.length) {
-        console.log("[statistics] Skipping calculation: Missing account ID or closed opportunities");
         return;
       }
 
       // Check for case sensitivity or trailing/leading spaces issues
       const normalizedAccountId = accountId.trim().toLowerCase();
-      console.log("[statistics] Normalized account ID:", normalizedAccountId);
       
       // Try different approaches to match the account ID
       const accountOpportunities = closedOpportunities.filter(opp => {
@@ -91,24 +81,15 @@ const Statistics = ({
         const partialMatch = normalizedOppAccountId.includes(normalizedAccountId) || 
                            normalizedAccountId.includes(normalizedOppAccountId);
         
-        console.log("[statistics] Comparing account IDs:", {
-          "current": normalizedAccountId,
-          "closed opp": normalizedOppAccountId,
-          "exact match": exactMatch,
-          "partial match": partialMatch
-        });
-        
         // Use either exact match or partial match for debugging
         return exactMatch;
       });
-    
-      console.log("[statistics] Filtered opportunities for account:", accountOpportunities.length);
-      
+          
       if (accountOpportunities.length === 0) {
-        console.log("[statistics] No matches found. Trying alternate approach with more flexible matching...");
+        // [statistics] No matches found. Trying alternate approach with more flexible matching
         
         // For debugging: Print all closed opportunity account IDs to compare
-        console.log("[statistics] All closed opportunity account IDs:");
+        // console.log("[statistics] All closed opportunity account IDs:");
         closedOpportunities.forEach((opp, index) => {
           // First, log all keys in this opportunity
           const allKeys = Object.keys(opp);
@@ -118,24 +99,11 @@ const Statistics = ({
             key.toLowerCase().includes('customer') || 
             key.toLowerCase().includes('account')
           );
-          
-          console.log(`Opp ${index}:`, {
-            "ID": opp.opportunityid,
-            "Name": opp.name,
-            "All Keys": allKeys,
-            "Possible Account Keys": possibleAccountKeys,
-            "Values of Possible Account Keys": possibleAccountKeys.map(key => `${key}: ${opp[key]}`),
-            "State": opp.statecode
-          });
         });
       }
       
       // Count wins (statecode 1 = Won)
       const wins = accountOpportunities.filter(opp => {
-        console.log("[statistics] Checking win status:", {
-          "opp.statecode": opp.statecode,
-          "isWon": opp.statecode === 1
-        });
         return opp.statecode === 1;
       }).length;
       
@@ -143,12 +111,6 @@ const Statistics = ({
       
       // Calculate win percentage
       const winPercentage = total > 0 ? Math.round((wins / total) * 100) : 0;
-      
-      console.log("[statistics] Win/Loss calculation result:", {
-        ratio: winPercentage,
-        wins,
-        total
-      });
       
       // Update state with new calculation
       setWinLossRatio({
@@ -165,7 +127,7 @@ const Statistics = ({
     // If data isn't available immediately, try again after a short delay
     const delayedCalculation = setTimeout(() => {
       if (winLossRatio.total === 0 && opportunity?._customerid_value) {
-        console.log("[statistics] Retry calculation after delay");
+        // Retry calculation after delay
         calculateWinLossRatio();
       }
     }, 1000);

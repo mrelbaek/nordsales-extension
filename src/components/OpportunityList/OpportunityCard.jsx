@@ -35,8 +35,6 @@ const OpportunityCard = ({ opportunity, onClick }) => {
     
     // Ensure activities is an array and exists
     const safeActivities = Array.isArray(activities) ? activities : [];
-    
-    console.log('🚨 Opportunity activities in card::', safeActivities);
   
     if (safeActivities.length > 0) {
       const now = new Date();

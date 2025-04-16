@@ -3,7 +3,6 @@ import React, { useEffect } from 'react';
 const SubscriptionStatus = ({ subscription }) => {
   // Log the subscription for debugging
   useEffect(() => {
-    console.log('SubscriptionStatus component received subscription:', subscription);
   }, [subscription]);
 
   // Stripe customer portal URL
@@ -14,7 +13,7 @@ const SubscriptionStatus = ({ subscription }) => {
   const tier = subscription?.status || 'free';
 
   // Debug line to check what tier is being processed
-  console.log('Processing subscription tier:', tier);
+  // console.log('Processing subscription tier:', tier);
   
   // Special handling for trial status
   if (tier === 'trial') {

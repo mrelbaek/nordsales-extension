@@ -17,7 +17,6 @@ export const getDynamicsBaseUrl = async () => {
   }
   
   BASE_URL = `https://${orgId}.crm.dynamics.com/api/data/v9.2`;
-  console.log(`[API] Using Dynamics API base URL: ${BASE_URL}`);
   return BASE_URL;
 };
 
@@ -34,7 +33,6 @@ const getDefaultHeaders = (token) => {
   
   // Ensure token has Bearer prefix
   const formattedToken = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
-  console.log(`[API] Token format: ${formattedToken.substring(0, 16)}...`);
   
   return {
     "Authorization": formattedToken,
@@ -52,7 +50,6 @@ const getDefaultHeaders = (token) => {
  * @returns {Promise<Object>} Parsed response data
  */
 const handleApiResponse = async (response, context) => {
-  console.log(`[API] ${context} response status: ${response.status}`);
   
   if (response.status === 401) {
     console.error(`[API] Authentication failed (401) during ${context}`);
@@ -83,7 +80,6 @@ const handleApiResponse = async (response, context) => {
 export const getCurrentUserId = async (token) => {
   try {
     const baseUrl = await getDynamicsBaseUrl();
-    console.log(`[API] Fetching current user with WhoAmI endpoint: ${baseUrl}/WhoAmI`);
     
     const response = await fetch(`${baseUrl}/WhoAmI`, {
       method: 'GET',
@@ -91,14 +87,12 @@ export const getCurrentUserId = async (token) => {
     });
     
     const data = await handleApiResponse(response, "fetch current user");
-    console.log("[API] WhoAmI response:", JSON.stringify(data, null, 2));
     
     if (!data.UserId) {
       console.error("[API] UserId not found in WhoAmI response:", data);
       throw new Error("[API] User ID not found in response");
     }
     
-    console.log(`[API] Current user ID: ${data.UserId}`);
     return data.UserId;
   } catch (error) {
     console.error("[API] Error in getCurrentUserId:", error);
@@ -118,7 +112,6 @@ export const fetchOpportunityDetails = async (token, oppId) => {
   }
   
   try {
-    console.log(`[API] Fetching opportunity details for ID: ${oppId}`);
     const baseUrl = await getDynamicsBaseUrl();
     
     // Try different query formats to handle potential issues with parentheses
@@ -135,9 +128,7 @@ export const fetchOpportunityDetails = async (token, oppId) => {
     for (const queryFormat of queryFormats) {
       try {
         const opportunityUrl = `${baseUrl}/opportunities?$select=name,opportunityid,_customerid_value,createdon,statecode,estimatedvalue,estimatedclosedate,actualclosedate&$expand=customerid_account($select=name)&$filter=${queryFormat}`;
-        
-        console.log(`[API] Trying opportunity query format: ${opportunityUrl}`);
-        
+                
         const opportunityResponse = await fetch(opportunityUrl, {
           headers: getDefaultHeaders(token),
         });
@@ -150,7 +141,6 @@ export const fetchOpportunityDetails = async (token, oppId) => {
         // If the request was successful, parse the response
         if (opportunityResponse.ok) {
           opportunityData = await opportunityResponse.json();
-          console.log('[API] Opportunity data received:', opportunityData);
           
           // Check if we got results
           if (opportunityData.value && opportunityData.value.length > 0) {
@@ -185,7 +175,6 @@ export const fetchOpportunityDetails = async (token, oppId) => {
     if (activitiesResponse.ok) {
       const activitiesData = await activitiesResponse.json();
       activities = activitiesData.value || [];
-      console.log(`[API] Fetched ${activities.length} activities for opportunity ${oppId}`);
     } else {
       console.warn(`[API] Could not fetch activities: ${activitiesResponse.status}`);
       // Continue without activities rather than failing completely
@@ -220,9 +209,7 @@ export const fetchUserActivitiesForLastYear = async (token) => {
     if (!currentUserId) {
       throw new Error("Could not determine current user ID");
     }
-    
-    console.log(`[API] Fetching activities for user ${currentUserId} for the last 12 months...`);
-    
+        
     // Calculate date 12 months ago for filtering
     const twelveMonthsAgo = new Date();
     twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
@@ -231,9 +218,7 @@ export const fetchUserActivitiesForLastYear = async (token) => {
     // Build URL to fetch activities created by the user in the last 12 months
     // This includes ANY activity created by the user, not just ones related to opportunities
     const url = `${baseUrl}/activitypointers?$filter=_createdby_value eq ${currentUserId} and createdon ge ${formattedDate}&$select=activityid,subject,activitytypecode,createdon,scheduledstart,scheduledend&$orderby=createdon desc&$top=5000`;
-    
-    console.log(`[API] User activities URL: ${url}`);
-    
+        
     const response = await fetch(url, {
       headers: {
         "Authorization": `${token}`,
@@ -261,18 +246,8 @@ export const fetchUserActivitiesForLastYear = async (token) => {
       throw new Error(`Failed to fetch user activities: ${response.status} - ${errorText}`);
     }
     
-    const data = await response.json();
-    console.log(`[API] Received ${data.value?.length || 0} user activities`);
-    
-    // Sample data for debugging
-    if (data.value && data.value.length > 0) {
-      console.log("[API] Sample user activity:", {
-        id: data.value[0].activityid,
-        type: data.value[0].activitytypecode,
-        createdon: data.value[0].createdon
-      });
-    }
-    
+    const data = await response.json();    
+
     return data.value || [];
   } catch (error) {
     console.error("[API] Error fetching user activities:", error);
@@ -303,9 +278,7 @@ export const fetchOpportunitiesWithActivities = async (
     // Get base URL and current user ID
     const baseUrl = await getDynamicsBaseUrl();
     const currentUserId = await getCurrentUserId(token);
-    
-    console.log(`[API] Fetching opportunities for user ${currentUserId}...`);
-    
+        
     // Build URL to fetch open opportunities
     const url = `${baseUrl}/opportunities?$filter=statecode eq 0 and _ownerid_value eq ${currentUserId}&$select=name,opportunityid,_customerid_value,createdon,statecode,estimatedvalue,estimatedclosedate,actualclosedate&$expand=customerid_account($select=name)`;
     
@@ -315,7 +288,6 @@ export const fetchOpportunitiesWithActivities = async (
     
     const data = await handleApiResponse(response, "fetch opportunities list");
     const opportunities = data.value || [];
-    console.log(`[API] Received ${opportunities.length} opportunities`);
     
     // For each opportunity, fetch activities
     const opportunitiesWithActivities = await Promise.all(
@@ -421,9 +393,7 @@ export const fetchClosedOpportunities = async (
     
     const baseUrl = await getDynamicsBaseUrl();
     const currentUserId = await getCurrentUserId(token);
-    
-    console.log(`[API] Fetching closed opportunities for user ${currentUserId}...`);
-    
+        
     const url = `${baseUrl}/opportunities?$filter=statecode ne 0 and _ownerid_value eq ${currentUserId}&$select=name,statecode,opportunityid,_customerid_value,totalamount,actualclosedate,totaldiscountamount,exchangerate,createdon&$orderby=actualclosedate desc`;
     
     const response = await fetch(url, {
@@ -431,7 +401,6 @@ export const fetchClosedOpportunities = async (
     });
     
     const data = await handleApiResponse(response, "fetch closed opportunities");
-    console.log(`[API] Received ${data.value?.length || 0} closed opportunities`);
     
     // Filter out opportunities without closing date
     const validOpportunities = (data.value || []).filter(opp => 
@@ -466,7 +435,6 @@ export const getCurrentOpportunityId = async () => {
     const storedData = await chrome.storage.local.get(['currentOpportunityId']);
     
     if (storedData.currentOpportunityId) {
-      console.log("[API] Found opportunity ID in storage:", storedData.currentOpportunityId);
       return storedData.currentOpportunityId;
     }
     
@@ -476,7 +444,6 @@ export const getCurrentOpportunityId = async () => {
 
     if (tabs.length > 0 && activeTab?.url && activeTab.url.includes('crm.dynamics.com')) {
       try {
-        console.log("[API] Checking for opportunity ID in active tab:", activeTab.id);
         
         // Set up a timeout promise to avoid hanging if communication fails
         const messagePromise = chrome.tabs.sendMessage(activeTab.id, { type: "CHECK_OPPORTUNITY_ID" });
@@ -486,7 +453,6 @@ export const getCurrentOpportunityId = async () => {
         
         // Race the message against the timeout
         const response = await Promise.race([messagePromise, timeoutPromise]);
-        console.log("[API] Response from content script:", response);
         
         if (response && response.opportunityId) {
           // Store the ID so we don't have to ask again
@@ -502,7 +468,6 @@ export const getCurrentOpportunityId = async () => {
         
         // Try to parse the URL directly as a fallback
         if (activeTab.url) {
-          console.log("[API] Attempting to extract ID from URL as fallback");
           
           // Try different URL patterns
           const urlObj = new URL(activeTab.url);
@@ -510,7 +475,6 @@ export const getCurrentOpportunityId = async () => {
           // Check query parameters
           const idParam = urlObj.searchParams.get('id');
           if (idParam) {
-            console.log("[API] Found ID in URL parameters:", idParam);
             chrome.storage.local.set({ 
               currentOpportunityId: idParam,
               lastUpdated: Date.now(),
@@ -522,7 +486,6 @@ export const getCurrentOpportunityId = async () => {
           // Check for ID in path
           const pathMatch = activeTab.url.match(/opportunit(?:y|ies)\/([a-f0-9-]+)/i);
           if (pathMatch && pathMatch[1]) {
-            console.log("[API] Found ID in URL path:", pathMatch[1]);
             chrome.storage.local.set({ 
               currentOpportunityId: pathMatch[1],
               lastUpdated: Date.now(),
@@ -534,7 +497,7 @@ export const getCurrentOpportunityId = async () => {
       }
     }
 
-    console.log("[API] No opportunity ID could be found");
+    console.warn("[API] No opportunity ID could be found");
     return null;
   } catch (err) {
     console.error("[API] Error getting opportunity ID:", err);

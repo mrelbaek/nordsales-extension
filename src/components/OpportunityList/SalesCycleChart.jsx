@@ -36,7 +36,6 @@ const SalesCycleChart = ({ closedOpportunities = [] }) => {
 
   // Calculate closing times and prepare chart data
   useEffect(() => {
-    console.log("[SalesCycleChart] closedOpportunities:", closedOpportunities?.length);
     if (closedOpportunities && closedOpportunities.length > 0) {
       // Take only the last 15 closed opportunities and sort by actualclosedate
       const sortedOpportunities = [...closedOpportunities]
@@ -91,7 +90,6 @@ const SalesCycleChart = ({ closedOpportunities = [] }) => {
         
         // Calculate average
         const avgTime = Math.round(times.reduce((acc, time) => acc + time, 0) / (times.length || 1));
-        console.log("Average closing time calculated:", avgTime, "days");
         
         setAverageClosingTime(avgTime);
         

@@ -12,7 +12,6 @@ import AccordionSection from '../common/AccordionSection';
  * @returns {JSX.Element} Timeline log component
  */
 const TimelineLog = ({ activities = [], isOpen, onToggle }) => {
-  console.log('TimelineLog received activities:', activities);
   // Group activities by date
   const groupActivitiesByDate = () => {
     const groupedActivities = {};

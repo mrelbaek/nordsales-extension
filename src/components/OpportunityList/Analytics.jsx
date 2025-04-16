@@ -38,39 +38,24 @@ const ListAnalytics = ({ opportunities = [], closedOpportunities = [], isOpen, o
   const [tooltipData, setTooltipData] = useState([]);
   const chartRef = useRef(null);
 
-  console.log("[ListAnalytics] Rendering with closedOpportunities:", closedOpportunities?.length);
-
   // Calculate closing times and prepare chart data
   useEffect(() => {
-    console.log("[ListAnalytics] closedOpportunities length:", closedOpportunities?.length);
 
     if (closedOpportunities && closedOpportunities.length > 0) {
       // Take only the last 10 closed opportunities and sort by actualclosedate
       const sortedOpportunities = [...closedOpportunities]
         .sort((a, b) => new Date(b.actualclosedate) - new Date(a.actualclosedate))
         .slice(0, 10);
-      
-      console.log("[ListAnalytics] Sorted closed opportunities:", sortedOpportunities.length);
-      
+            
       // Calculate closing times (days between creation and close)
       const times = sortedOpportunities.map(opp => {
         const createdDate = new Date(opp.createdon);
         const closedDate = new Date(opp.actualclosedate);
-        
-        // Add logging for troubleshooting
-        console.log("[ListAnalytics] Dates for opportunity", opp.opportunityid, {
-          createdDate: createdDate.toISOString(),
-          closedDate: closedDate.toISOString(),
-          isValidCreated: !isNaN(createdDate),
-          isValidClosed: !isNaN(closedDate)
-        });
-        
+
         // Return difference in days
         return Math.floor((closedDate - createdDate) / (1000 * 60 * 60 * 24));
       });
-      
-      console.log("[ListAnalytics] Calculated times:", times);
-      
+            
       const generateTooltips = async () => {
         // Create tooltip data for closed opportunities
         const tooltipsPromises = sortedOpportunities.map(async (opp, index) => {
@@ -110,7 +95,6 @@ const ListAnalytics = ({ opportunities = [], closedOpportunities = [], isOpen, o
         
         // Calculate average
         const avgTime = Math.round(times.reduce((acc, time) => acc + time, 0) / (times.length || 1));
-        console.log("[ListAnalytics] Average closing time calculated:", avgTime, "days");
         
         setAverageClosingTime(avgTime);
         
@@ -132,7 +116,6 @@ const ListAnalytics = ({ opportunities = [], closedOpportunities = [], isOpen, o
       
       generateTooltips();
     } else {
-      console.log("[ListAnalytics] No closed opportunities available");
       // Reset chart if no data
       setChartData({ labels: [], datasets: [{ data: [] }] });
       setAverageClosingTime(0);

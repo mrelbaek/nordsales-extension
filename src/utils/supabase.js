@@ -36,7 +36,6 @@ export async function checkSupabaseConnection() {
 // Initialize tables if they don't exist
 export async function initializeDatabase() {
   try {
-    console.log("Checking if database tables are initialized...");
     
     // This is just a check - in a real app, table creation would be done via migrations
     // but for this extension we'll check if essential tables exist

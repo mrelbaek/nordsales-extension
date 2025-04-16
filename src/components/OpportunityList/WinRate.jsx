@@ -16,18 +16,8 @@ const getWinRateColor = (percentage) => {
 const WinRate = ({ closedOpportunities = [] }) => {
   // Calculate win rates for different time periods
   const { l3mWinRate, l12mWinRate, l3mCount, l12mCount, l3mWonCount, l12mWonCount, l3mTrend, l12mTrend } = useMemo(() => {
-    // Add debugging information
-    console.log('[WinRate] Number of closed opportunities:', closedOpportunities?.length || 0);
-    if (closedOpportunities && closedOpportunities.length > 0) {
-      console.log('[WinRate] First opportunity sample:', {
-        actualclosedate: closedOpportunities[0].actualclosedate,
-        createdon: closedOpportunities[0].createdon,
-        statecode: closedOpportunities[0].statecode
-      });
-    }
     
     if (!closedOpportunities || closedOpportunities.length === 0) {
-      console.log('[WinRate] No closed opportunities data available');
       return { 
         l3mWinRate: 0, 
         l12mWinRate: 0,
@@ -48,16 +38,10 @@ const WinRate = ({ closedOpportunities = [] }) => {
     const twelveMonthsAgo = new Date();
     twelveMonthsAgo.setMonth(now.getMonth() - 12);
     
-    console.log('[WinRate] Date ranges:', {
-      now: now.toISOString(),
-      threeMonthsAgo: threeMonthsAgo.toISOString(),
-      twelveMonthsAgo: twelveMonthsAgo.toISOString()
-    });
-    
     // Filter opportunities closed in last 3 months
     const l3mOpportunities = closedOpportunities.filter(opp => {
       if (!opp.actualclosedate) {
-        console.log('[WinRate] Opportunity missing actualclosedate:', opp.opportunityid);
+        console.warn('[WinRate] Opportunity missing actualclosedate:', opp.opportunityid);
         return false;
       }
       
@@ -84,18 +68,9 @@ const WinRate = ({ closedOpportunities = [] }) => {
       }
     });
     
-    console.log('[WinRate] Filtered opportunities:', {
-      l3mCount: l3mOpportunities.length,
-      l12mCount: l12mOpportunities.length
-    });
-    
     // Calculate win rates
     // Log a sample opportunity to debug the exact structure
     if (l3mOpportunities.length > 0) {
-      console.log('[WinRate] Sample L3M opportunity statecode:', 
-        l3mOpportunities[0].statecode, 
-        'type:', typeof l3mOpportunities[0].statecode
-      );
     }
     
     // Count won opportunities - they should have statecode of 1 (numeric)
@@ -136,12 +111,6 @@ const WinRate = ({ closedOpportunities = [] }) => {
     // Calculate trend (difference between current and previous periods)
     const l3mTrend = l3mWinRate - prevL3mWinRate;
     
-    console.log('[WinRate] Trend calculation:', {
-      currentPeriod: `${l3mWon}/${l3mOpportunities.length} = ${l3mWinRate}%`,
-      previousPeriod: `${prevL3mWon}/${prevL3mOpportunities.length} = ${prevL3mWinRate}%`,
-      trend: l3mTrend
-    });
-      
     // Apply the same fix for 12-month calculation
     const l12mWon = l12mOpportunities.filter(opp => {
       return opp.statecode === 1 || opp.statecode === '1';
@@ -178,19 +147,6 @@ const WinRate = ({ closedOpportunities = [] }) => {
     
     // Calculate trend (difference between current and previous periods)
     const l12mTrend = l12mWinRate - prevL12mWinRate;
-    
-    console.log('[WinRate] L12M Trend calculation:', {
-      currentPeriod: `${l12mWon}/${l12mOpportunities.length} = ${l12mWinRate}%`,
-      previousPeriod: `${prevL12mWon}/${prevL12mOpportunities.length} = ${prevL12mWinRate}%`,
-      trend: l12mTrend
-    });
-    
-    console.log('[WinRate] Calculation results:', {
-      l3mWonCount: l3mWon,
-      l3mWinRate, 
-      l12mWonCount: l12mWon,
-      l12mWinRate
-    });
     
     return { 
       l3mWinRate, 

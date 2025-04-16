@@ -60,12 +60,11 @@ const Popup = () => {
       const { user } = await chrome.storage.local.get(["user"]);
       
       if (!user || !user.email) {
-        console.warn("[Popup] No user in storage, defaulting to free tier");
+        // [Popup] No user in storage, defaulting to free tier
         setSubscription({ status: 'free', isActive: true });
         return;
       }
       
-      console.log("[Popup] Initializing subscription for email:", user.email);
       const subStatus = await getSubscriptionStatus();
       setSubscription(subStatus);
       
@@ -85,7 +84,6 @@ const Popup = () => {
    */
   const handleFetchOpportunityDetails = async (token, oppId) => {
     try {
-      console.log("[Popup.jsx] handleFetchOpportunityDetails called for opportunity:", oppId);
       
       // Validate inputs
       if (!token) {
@@ -102,7 +100,6 @@ const Popup = () => {
       
       // Prevent concurrent operations
       if (stateTransitionLock.current) {
-        console.log("[Popup.jsx] State transition in progress, deferring opportunity details fetch");
         return;
       }
       
@@ -111,7 +108,6 @@ const Popup = () => {
       setLoading(true);
       
       if (lastFetchedOpportunityRef.current === oppId) {
-        console.log("[Popup] Skipping re-fetch — already fetched:", oppId);
         stateTransitionLock.current = false;
         setLoading(false);
         return;
@@ -119,7 +115,6 @@ const Popup = () => {
 
 
       if (currentOpportunity?.opportunityid === oppId) {
-        console.log("[Popup] Already displaying this opportunity, skipping update");
         return;
       }
       
@@ -128,7 +123,6 @@ const Popup = () => {
         const loggedIn = await isLoggedIn();
         
         if (!loggedIn) {
-          console.log("[Popup.jsx] Token invalid or expired, clearing token state");
           setAccessToken(null);
           setUser(null);
           setError("Your session has expired. Please log in again.");
@@ -137,7 +131,6 @@ const Popup = () => {
         
         // Now fetch opportunity details
         try {
-          console.log("[Popup.jsx] Calling fetchOpportunityDetails for ID:", oppId);
           
           // Direct call to the API utility function
           await fetchOpportunityDetails(
@@ -148,9 +141,7 @@ const Popup = () => {
             setCurrentOpportunity,
             setActivities
           );
-          
-          console.log("[Popup.jsx] Successfully loaded opportunity details");
-          
+                    
           // Also fetch closed opportunities for analytics in the background
           handleFetchClosedOpportunities(token).catch(err => {
             console.warn("[Popup.jsx] Error fetching closed opportunities:", err);
@@ -206,7 +197,6 @@ const Popup = () => {
       try {
         // Prevent multiple initializations
         if (stateTransitionLock.current) {
-          console.log("[Popup] Initialization already in progress, skipping");
           return;
         }
         
@@ -225,7 +215,9 @@ const Popup = () => {
         }
         
         // Notify service worker that popup is open
-        chrome.runtime.sendMessage({ type: "POPUP_OPENED" });
+        chrome.runtime.sendMessage({ type: "POPUP_OPENED" }).catch((err) => {
+          console.warn("[Popup] POPUP_OPENED:", err?.message || err);
+        });
         
         // Clear any existing errors
         setError(null);
@@ -278,16 +270,14 @@ const Popup = () => {
             setSubscription({ status: 'free', isActive: true });
           }
           
-          console.log("[Popup.jsx] Got access token:", accessToken ? "yes" : "no");
+          // console.log("[Popup.jsx] Got access token:", accessToken ? "yes" : "no");
           
           // Try to get current opportunity ID
           try {
             const oppId = await getCurrentOpportunityId();
-            console.log("[Popup.jsx] Current opportunity ID:", oppId);
             
             // Only update state if ID actually changed to prevent loops
             if (oppId) {
-              console.log("[Popup.jsx] Setting initial opportunity ID:", oppId);
               setCurrentOpportunityId(oppId); // ✅ Triggers the centralized fetch logic in useEffect
             } else {
               await handleFetchOpportunities(accessToken);
@@ -301,9 +291,7 @@ const Popup = () => {
                 name: "Loading...",
                 loading: true
               });
-              
-              console.log("[Popup.jsx] Fetching initial opportunity details:", oppId);
-              
+                            
               // Fetch the opportunity details with a small timeout to ensure state is updated
               setTimeout(async () => {
                 try {
@@ -318,7 +306,6 @@ const Popup = () => {
 
                   lastOpportunityIdRef.current = oppId;
 
-                  console.log("[Popup.jsx] Initial opportunity details loaded successfully");
                 } catch (fetchError) {
                   console.error("[Popup.jsx] Error loading initial opportunity:", fetchError);
                   // If there's an error, fall back to the list view
@@ -339,7 +326,6 @@ const Popup = () => {
             await handleFetchClosedOpportunities(accessToken);
           }
         } else {
-          console.log("[Popup.jsx] No valid login found, user needs to log in.");
         }
   
         // Get the auto-open preference
@@ -371,7 +357,6 @@ const Popup = () => {
     
         // More conservative check for clearing opportunity
         if (!newId && (currentOpportunityId || lastOpportunityIdRef.current)) {
-          console.log("[Popup.jsx] Opportunity ID cleared in storage");
           
           // Prevent multiple simultaneous resets
           if (stateTransitionLock.current) return;
@@ -403,16 +388,13 @@ const Popup = () => {
     
     // Listen for opportunity detection from content script
     const handleMessage = (message) => {
-      console.log("[Popup.jsx] Popup received message:", message.type);
     
       // Prevent concurrent or redundant operations
       if (stateTransitionLock.current) {
-        console.log("[Popup.jsx] State transition lock active, skipping message");
         return;
       }
       
       if (message.type === "OPPORTUNITY_DETECTED") {
-        console.log("[Popup.jsx] Opportunity detected message received");
       
         const newId = message.opportunityId;
         if (
@@ -421,17 +403,14 @@ const Popup = () => {
           newId !== lastOpportunityIdRef.current &&
           !stateTransitionLock.current
         ) {
-          console.log("[Popup.jsx] Setting currentOpportunityId from OPPORTUNITY_DETECTED:", newId);
           setCurrentOpportunityId(newId); // 🔁 this will trigger the fetch via useEffect
         }
       }
       
       if (message.type === "OPPORTUNITY_CLEARED") {
-        console.log("[Popup.jsx] Opportunity cleared notification received");
         
         // Prevent immediate re-fetch if already in list view
         if (!currentOpportunityId && !currentOpportunity) {
-          console.log("[Popup.jsx] Already in list view, skipping refresh");
           return;
         }
     
@@ -498,7 +477,6 @@ const Popup = () => {
    */
   const handleFetchClosedOpportunities = async (token) => {
     try {
-      console.log("BEFORE: Fetching closed opportunities...");
       await fetchClosedOpportunities(
         token,
         setLoading,
@@ -507,7 +485,6 @@ const Popup = () => {
       );
       // Need to use setTimeout because state updates are asynchronous
       setTimeout(() => {
-        console.log("AFTER: Closed opportunities fetched:", closedOpportunities.length);
       }, 100);
     } catch (error) {
       console.error("Error fetching closed opportunities:", error);
@@ -521,7 +498,6 @@ const Popup = () => {
     try {
       // Prevent concurrent operations
       if (stateTransitionLock.current) {
-        console.log("[Popup.jsx] State transition in progress, deferring opportunities fetch");
         return;
       }
       
@@ -550,7 +526,6 @@ const Popup = () => {
     try {
       // Prevent concurrent operations
       if (stateTransitionLock.current) {
-        console.log("[Popup.jsx] State transition in progress, deferring refresh");
         return;
       }
       
@@ -575,7 +550,6 @@ const Popup = () => {
       // Also refresh closed opportunities for analytics
       await handleFetchClosedOpportunities(accessToken);
       
-      console.log("[Popup.jsx] Refresh completed successfully");
     } catch (error) {
       console.error("Error during refresh:", error);
       setError(`Failed to refresh data: ${error.message}`);
@@ -592,7 +566,6 @@ const Popup = () => {
     try {
       // Prevent concurrent operations
       if (stateTransitionLock.current) {
-        console.log("[Popup.jsx] State transition in progress, deferring my opportunities fetch");
         return;
       }
       
@@ -623,7 +596,6 @@ const Popup = () => {
     try {
       // Prevent concurrent operations
       if (stateTransitionLock.current) {
-        console.log("[Popup.jsx] State transition in progress, deferring login");
         return;
       }
       
@@ -651,7 +623,6 @@ const Popup = () => {
           throw new Error(result.error?.message || "Login failed");
         }
         
-        console.log("[Popup.jsx] Login successful, got token");
         setAccessToken(result.token);
         
         // Set user data from login result
@@ -671,7 +642,7 @@ const Popup = () => {
         }
       } catch (loginError) {
         if (loginError.message && loginError.message.includes("did not approve")) {
-          console.log("[Popup.jsx] User cancelled the login dialog");
+          // console.log("[Popup.jsx] User cancelled the login dialog");
           setError("Authentication cancelled. Please try again.");
         } else {
           console.error("Login failed:", loginError);
@@ -694,7 +665,6 @@ const Popup = () => {
    */
   const handleOpportunitySelect = async (opportunityId) => {
     try {
-      console.log("[Popup.jsx] Navigating to opportunity:", opportunityId);
       
       // Get all tabs and find the Dynamics CRM tab
       const tabs = await chrome.tabs.query({ url: "*://*.crm.dynamics.com/*" });
@@ -712,9 +682,7 @@ const Popup = () => {
       
       // Construct the opportunity URL
       const opportunityUrl = `${baseUrl}/main.aspx?etn=opportunity&pagetype=entityrecord&id=${opportunityId}`;
-      
-      console.log("[Popup.jsx] Navigating CRM tab to:", opportunityUrl);
-      
+            
       // Update the CRM tab with the new URL - this navigates the tab to the opportunity
       await chrome.tabs.update(crmTab.id, { url: opportunityUrl, active: true });
       
@@ -732,7 +700,6 @@ const Popup = () => {
    */
   const handleLogout = async () => {
     if (stateTransitionLock.current) {
-      console.log("[Popup.jsx] State transition or logout in progress, deferring logout");
       return;
     }
   
@@ -765,7 +732,6 @@ const Popup = () => {
       // Clear any errors
       setError(null);
       
-      console.log("[Popup.jsx] Logout successful - all state cleared");
     } catch (error) {
       console.error("Unexpected error during logout:", error);
       setError(`An unexpected error occurred during logout: ${error.message}`);
@@ -780,7 +746,6 @@ const Popup = () => {
    */
   const handleBackToList = async () => {
     try {
-      console.log("[Popup.jsx] Navigating back to opportunities list");
       
       // Get all tabs and find the Dynamics CRM tab
       const tabs = await chrome.tabs.query({ url: "*://*.crm.dynamics.com/*" });
@@ -798,9 +763,7 @@ const Popup = () => {
       
       // Construct the opportunities list URL
       const opportunitiesUrl = `${baseUrl}/main.aspx?pagetype=entitylist&etn=opportunity&viewid=00000000-0000-0000-00AA-000010001003&viewtype=1039`;
-      
-      console.log("[Popup.jsx] Navigating CRM tab to:", opportunitiesUrl);
-      
+            
       // Update the CRM tab with the new URL - this navigates the tab to the opportunities list
       await chrome.tabs.update(crmTab.id, { url: opportunitiesUrl, active: true });
       
@@ -843,9 +806,8 @@ const Popup = () => {
     chrome.storage.local.set({ 
       autoOpen: newValue 
     });
-    chrome.runtime.sendMessage({ 
-      type: "SET_AUTO_OPEN", 
-      enabled: newValue 
+    chrome.runtime.sendMessage({ type: "SET_AUTO_OPEN", enabled: newValue }).catch((err) => {
+      console.warn("[Popup] Could not send message (SET_AUTO_OPEN):", err?.message || err);
     });
   };
 
@@ -861,29 +823,6 @@ const Popup = () => {
    */
   const renderContent = () => {
     try {
-      // Add explicit decision logging
-      console.log('[Popup] RENDER DECISION:', {
-        accessToken: !!accessToken,
-        currentOpportunityId,
-        hasCurrentOpportunity: !!currentOpportunity,
-        opportunityIdMatch: currentOpportunity?.opportunityid === currentOpportunityId,
-        loading,
-        stateTransitionLock: stateTransitionLock.current
-      });
-
-      // Add explicit logging
-      console.log('[Popup] RENDER CONTENT DEBUG:');
-      console.log('[Popup] Organization ID:', organizationId);
-      console.log('[Popup] Access Token:', !!accessToken);
-      console.log('[Popup] User:', user?.email || 'not logged in');
-      console.log('[Popup] Subscription:', subscription?.status || 'none');
-      console.log('[Popup] Current Opportunity:', currentOpportunity ? currentOpportunity.opportunityid : 'none');
-      console.log('[Popup] Current Opportunity ID:', currentOpportunityId);
-      console.log('[Popup] State Transition Lock:', stateTransitionLock.current);
-      console.log('[Popup] Last Opportunity ID Ref:', lastOpportunityIdRef.current);
-      console.log('[Popup] Opportunities Count:', opportunities.length);
-      console.log('[Popup] Closed Opportunities Count:', closedOpportunities.length);
-      
       // Show organization selection message if no org ID is detected
       if (!organizationId) {
         return (
@@ -923,7 +862,6 @@ const Popup = () => {
         currentOpportunity && 
         currentOpportunity.opportunityid === currentOpportunityId
       ) {
-        console.log('[Popup] Rendering opportunity detail view for:', currentOpportunityId);
         return (
           <OpportunityDetail 
             opportunity={currentOpportunity}
@@ -942,7 +880,6 @@ const Popup = () => {
         );
       }
     
-      console.log('[Popup] Rendering opportunity list view');
       return (
         <OpportunityList 
           opportunities={(() => {
@@ -1030,16 +967,18 @@ const Popup = () => {
         backgroundColor: "rgba(255,255,255,0.8)"
       }}>
         <details>
-          <summary>Debug</summary>
-          <div>Org ID: {organizationId || 'Not detected'}</div>
-          <div>Token: {accessToken ? 'Yes' : 'No'}</div>
-          <div>User: {user?.email || 'None'}</div>
-          <div>Subscription: {subscription?.status || 'None'}</div>
-          <div>Opp ID: {currentOpportunityId || 'None'}</div>
-          <div>Last Opp Ref: {lastOpportunityIdRef.current || 'None'}</div>
-          <div>Lock: {stateTransitionLock.current ? 'Active' : 'Inactive'}</div>
-          <div>Opportunities: {opportunities.length}</div>
-          <div>Closed Opportunities: {closedOpportunities.length}</div>
+        <summary>Debug</summary>
+        <div>Org ID: {organizationId || 'Not detected'}</div>
+        <div>Access Token: {accessToken ? 'Yes' : 'No'}</div>
+        <div>User: {user?.email || 'None'}</div>
+        <div>Subscription: {subscription?.status || 'None'}</div>
+        <div>Current Opp ID: {currentOpportunityId || 'None'}</div>
+        <div>Matched Opp ID: {currentOpportunity?.opportunityid === currentOpportunityId ? 'Yes' : 'No'}</div>
+        <div>Last Opp Ref: {lastOpportunityIdRef.current || 'None'}</div>
+        <div>Lock: {stateTransitionLock.current ? 'Active' : 'Inactive'}</div>
+        <div>Loading: {loading ? 'Yes' : 'No'}</div>
+        <div>Opps: {opportunities.length}</div>
+        <div>Closed Opps: {closedOpportunities.length}</div>
         </details>
       </div>
     </div>

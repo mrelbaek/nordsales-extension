@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { PiGear, PiList, PiX, PiArrowsClockwise, PiUser, PiChartBar, PiHouse, PiSignOut } from "react-icons/pi";
 import DebugButton from './DebugButton';
 import SubscriptionStatus from './SubscriptionStatus';
+import SubscriptionDebugPanel from './SubscriptionDebugPanel';
+
 
 /**
  * Creates a header element with consistent styling and sticky positioning
@@ -329,6 +331,10 @@ const Header = ({
               </div>
             </div>
             
+            {/* Debug Panel 
+            <SubscriptionDebugPanel />
+            */}
+
             {/* Logout Button */}
             <div style={{ padding: "16px", borderTop: "1px solid #f0f0f0" }}>
               <button 

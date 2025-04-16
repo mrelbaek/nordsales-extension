@@ -1,6 +1,5 @@
-// Add this component to your extension for debugging subscription issues
-
 import React, { useState, useEffect } from 'react';
+import { getSubscriptionStatus } from '../utils/subscriptions'; // Import directly at the top
 
 const SubscriptionDebugPanel = ({ user, onUpdate }) => {
   const [loading, setLoading] = useState(false);
@@ -33,9 +32,8 @@ const SubscriptionDebugPanel = ({ user, onUpdate }) => {
     setError(null);
     
     try {
-      // Import the function here to avoid circular dependencies
-      const { getSubscriptionStatus } = await import('../../utils/subscriptions.js');
-      const subscription = await getSubscriptionStatus(user.email);
+      // Use the directly imported function instead of dynamic import
+      const subscription = await getSubscriptionStatus();
       setSupabaseSubscription(subscription);
     } catch (err) {
       console.error("Error checking Supabase subscription:", err);
@@ -129,6 +127,13 @@ const SubscriptionDebugPanel = ({ user, onUpdate }) => {
           style={{ padding: '4px 8px' }}
         >
           Set Pro
+        </button>
+        <button 
+          onClick={() => setSubscriptionStatus('trial')} 
+          disabled={loading}
+          style={{ padding: '4px 8px' }}
+        >
+          Set Trial
         </button>
       </div>
       

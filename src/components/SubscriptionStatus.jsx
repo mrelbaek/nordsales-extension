@@ -15,8 +15,17 @@ const SubscriptionStatus = ({ subscription }) => {
 
   // Debug line to check what tier is being processed
   console.log('Processing subscription tier:', tier);
-
-  if (tier === 'pro' || tier === 'enterprise' || tier === 'team') {
+  
+  // Special handling for trial status
+  if (tier === 'trial') {
+    badgeLabel = 'Trial';
+    badgeColors = {
+      background: '#e3f2fd', // Light blue background
+      text: '#0277bd',       // Blue text
+      hover: '#29b6f6'       // Lighter blue on hover
+    };
+  }
+  else if (tier === 'pro' || tier === 'enterprise' || tier === 'team') {
     badgeLabel = tier.charAt(0).toUpperCase() + tier.slice(1);
     badgeColors = {
       background: '#111111',
@@ -40,8 +49,12 @@ const SubscriptionStatus = ({ subscription }) => {
     };
   }
 
+  // Determine if we should show trial days remaining
+  const showTrialDays = tier === 'trial' && subscription?.trialDaysRemaining;
+
   return (
     <div>
+      {/* Badge for subscription status */}
       <span
         style={{
           display: 'inline-block',
@@ -55,7 +68,14 @@ const SubscriptionStatus = ({ subscription }) => {
         }}
       >
         {badgeLabel}
+        {showTrialDays && (
+          <span style={{ marginLeft: '4px', fontSize: '10px' }}>
+            ({subscription.trialDaysRemaining} {subscription.trialDaysRemaining === 1 ? 'day' : 'days'})
+          </span>
+        )}
       </span>
+      
+      {/* Show team plan badge if applicable */}
       {subscription?.isOrgSubscription && (
         <span
           style={{
@@ -69,6 +89,24 @@ const SubscriptionStatus = ({ subscription }) => {
         >
           Team Plan
         </span>
+      )}
+      
+      {/* Add upgrade link for trial users */}
+      {tier === 'trial' && (
+        <a
+          href="https://buy.stripe.com/8wMg1NaB77DG5wcfYY"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            display: 'block',
+            marginTop: '4px',
+            fontSize: '10px',
+            color: '#0277bd',
+            textDecoration: 'none',
+          }}
+        >
+          Upgrade to Pro
+        </a>
       )}
     </div>
   );

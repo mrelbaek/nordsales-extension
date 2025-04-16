@@ -1,6 +1,7 @@
 // supabaseAuth.js - Handles Supabase authentication and user management
 
 import { supabase } from './supabase';
+import manifest from '../../manifest.json'
 
 /**
  * Sync user data with Supabase
@@ -34,16 +35,20 @@ export async function syncUserWithSupabase(user) {
       email: user.email,
       name: user.name || 'Unknown User',
       organization_id: orgId,
-      last_login: new Date(),
+      last_login: now.toISOString(),
       login_count: loginCount + 1,
-      extension_version: '1.0.0',
+      extension_version: manifest.version,
       dynamics_user_id: user.id || 'unknown'
     };
     
     // Set defaults for new users
+    const now = new Date();
+    const trialEnds = new Date(now);
+    trialEnds.setDate(trialEnds.getDate() + 14);    
     if (isNewUser) {
       userData.subscription_status = 'free';
-      userData.first_login = new Date();
+      userData.first_login = now.toISOString();
+      userData.trial_ends_at = trialEnds.toISOString();
     }
     
     // Update user in database

@@ -1,26 +1,29 @@
+// subscriptions.js - Consolidated subscription management for Lens
+
 import { supabase } from './supabase';
-import { supabaseAuth } from './supabaseAuth';
 
-
+/**
+ * Feature access map defining which features are available to which subscription tiers
+ */
 export const featureAccessMap = {
   // Free Tier
-  openOpportunitiesTracker: ['free', 'pro', 'team'],
-  basicStats: ['free', 'pro', 'team'],
-  simpleWinLossCounters: ['free', 'pro', 'team'],
+  openOpportunitiesTracker: ['free', 'trial', 'pro', 'team'],
+  basicStats: ['free', 'trial', 'pro', 'team'],
+  simpleWinLossCounters: ['free', 'trial', 'pro', 'team'],
   limitedActivityTrends: ['free'],
 
   // Pro Tier
-  portfolioAnalytics: ['pro', 'team'],
-  winLossCharts: ['pro', 'team'],
-  salesCycleAnalytics: ['pro', 'team'],
-  fullActivityTrends: ['pro', 'team'],
-  opportunityStats: ['pro', 'team'],
-  activitiesCalendar: ['pro', 'team'],
-  fullTimelineLog: ['pro', 'team'],
-  salesCycleBenchmarks: ['pro', 'team'],
-  allChartsAndVisuals: ['pro', 'team'],
+  portfolioAnalytics: ['trial','pro', 'team'],
+  winLossCharts: ['trial','pro', 'team'],
+  salesCycleAnalytics: ['trial','pro', 'team'],
+  fullActivityTrends: ['trial','pro', 'team'],
+  opportunityStats: ['trial','pro', 'team'],
+  activitiesCalendar: ['trial','pro', 'team'],
+  fullTimelineLog: ['trial','pro', 'team'],
+  salesCycleBenchmarks: ['trial','pro', 'team'],
+  allChartsAndVisuals: ['trial','pro', 'team'],
 
-  // Team (coming soon — stubbed for now)
+  // Team Tier
   benchmarkTeamPerformance: ['team'],
   trackOpportunities: ['team'],
   scheduledReports: ['team'],
@@ -34,40 +37,56 @@ export const featureAccessMap = {
  */
 export async function getSubscriptionStatus() {
   try {
-    // Get user info from Chrome storage instead of Supabase Auth
+    // Get user info from Chrome storage
     const { user } = await chrome.storage.local.get(["user"]);
     
     if (!user || !user.email) {
       console.error("User not found in local storage");
-      return {
-        status: 'free',
-        isActive: true
-      };
+      return getDefaultSubscription();
     }
     
     console.log("Checking subscription status for email:", user.email);
     
-    // Look up user by email (we're not using Auth)
+    // Check for manual override (useful for testing/debugging)
+    const { manualSubscription } = await chrome.storage.local.get(['manualSubscription']);
+    if (manualSubscription && manualSubscription.email === user.email) {
+      console.log("Using manual subscription override:", manualSubscription.status);
+      return manualSubscription;
+    }
+    
+    // Look up user by email 
     const { data: userData, error: fetchError } = await supabase
       .from('users')
-      .select('subscription_status, subscription_end_date, organization_id, uid')
+      .select('subscription_status, subscription_end_date, trial_ends_at, organization_id, uid')
       .eq('email', user.email)
       .single();
     
     if (fetchError || !userData) {
       console.error("Error fetching user data:", fetchError);
-      return {
-        status: 'free',
-        isActive: true
-      };
+      return getDefaultSubscription();
     }
     
-    let mappedStatus = userData.subscription_status || 'free';
-    if (mappedStatus === 'active') {
-      mappedStatus = 'pro';
-    }
+    // Log data for debugging
+    console.log("User subscription data from Supabase:", {
+      status: userData.subscription_status,
+      trialEndsAt: userData.trial_ends_at,
+      subscriptionEndDate: userData.subscription_end_date
+    });
     
-    // Check if organization has a subscription
+    // Map database status, with active subscription taking priority over trial
+    const mappedStatus = mapSubscriptionStatus(
+      userData.subscription_status,
+      userData.trial_ends_at
+    );
+    
+    console.log("Mapped subscription status:", mappedStatus);
+    
+    // Calculate trial information if relevant
+    const isInTrial = mappedStatus === 'trial';
+    const trialDaysRemaining = isInTrial && userData.trial_ends_at ? 
+      Math.ceil((new Date(userData.trial_ends_at) - new Date()) / (1000 * 60 * 60 * 24)) : 0;
+    
+    // Check if organization has a subscription (for team plans)
     if (userData.organization_id) {
       const { data: orgData, error: orgError } = await supabase
         .from('organizations')
@@ -77,34 +96,160 @@ export async function getSubscriptionStatus() {
 
       if (!orgError && orgData && orgData.subscription_status) {
         // Compare user vs org subscription, use the higher tier
-        const tiers = ['free', 'basic', 'pro', 'team'];
+        const tiers = ['free', 'trial', 'basic', 'pro', 'team'];
         const userTier = tiers.indexOf(mappedStatus);
-        const orgTier = tiers.indexOf(orgData.subscription_status);
+        const orgTier = tiers.indexOf(mapSubscriptionStatus(orgData.subscription_status));
         
         if (orgTier > userTier) {
           return {
-            status: orgData.subscription_status,
+            status: mapSubscriptionStatus(orgData.subscription_status),
             endDate: orgData.subscription_end_date || null,
-            isActive: !orgData.subscription_end_date || new Date(orgData.subscription_end_date) > new Date() || orgData.subscription_status === 'free',
-            isOrgSubscription: true
+            isActive: !orgData.subscription_end_date || new Date(orgData.subscription_end_date) > new Date(),
+            isOrgSubscription: true,
+            organizationId: userData.organization_id
           };
         }
       }
     }
     
-    return {
+    // Return user subscription with trial info if applicable
+    const result = {
       status: mappedStatus,
       endDate: userData.subscription_end_date || null,
-      isActive: !userData.subscription_end_date || new Date(userData.subscription_end_date) > new Date() || mappedStatus === 'free',
-      isOrgSubscription: false
-    };
-  } catch (err) {
-    console.error("Error in getSubscriptionStatus:", err);
-    return {
-      status: 'free',
       isActive: true
     };
+    
+    if (isInTrial) {
+      result.trialEndsAt = userData.trial_ends_at;
+      result.trialDaysRemaining = trialDaysRemaining;
+    }
+    
+    // Store the subscription in local storage for faster access
+    await chrome.storage.local.set({ subscription: result });
+    
+    return result;
+  } catch (err) {
+    console.error("Error in getSubscriptionStatus:", err);
+    return getDefaultSubscription();
   }
+}
+
+// function to start trial for a new users
+export async function startUserTrial(email) {
+  try {
+    if (!email) {
+      throw new Error("Email is required to start a trial");
+    }
+    
+    // Set trial end date 14 days from now
+    const trialEndsAt = new Date();
+    trialEndsAt.setDate(trialEndsAt.getDate() + 14);
+    
+    const { data, error } = await supabase
+      .from('users')
+      .update({
+        subscription_status: 'trial',
+        trial_ends_at: trialEndsAt.toISOString(),
+        updated_at: new Date()
+      })
+      .eq('email', email);
+      
+    if (error) throw error;
+    
+    // Update local storage
+    const { user } = await chrome.storage.local.get(["user"]);
+    if (user && user.email === email) {
+      await chrome.storage.local.set({
+        subscription: {
+          status: 'trial',
+          trialEndsAt: trialEndsAt.toISOString(),
+          trialDaysRemaining: 14,
+          isActive: true
+        }
+      });
+    }
+    
+    return { 
+      success: true, 
+      trialEndsAt: trialEndsAt.toISOString(), 
+      trialDaysRemaining: 14,
+      error: null 
+    };
+  } catch (error) {
+    console.error("Error starting trial:", error);
+    return { success: false, error };
+  }
+}
+
+/**
+ * Map database subscription status to application status
+ * @param {string} dbStatus - Status from database
+ * @returns {string} Mapped status
+ */
+function mapSubscriptionStatus(dbStatus, trialEndsAt) {
+  // Check if user has an active paid subscription first
+  if (dbStatus === 'active') {
+    return 'pro';  // Active subscriptions should always map to pro
+  }
+  
+  // Then check trial status (only applies if not already on pro)
+  if (trialEndsAt && new Date(trialEndsAt) > new Date()) {
+    return 'trial';
+  }
+  
+  // Handle other statuses
+  const statusMap = {
+    'cancelled': 'free',
+    'trialing': 'trial',
+    'trial': 'trial'
+  };
+  
+  return statusMap[dbStatus] || dbStatus || 'free';
+}
+
+/**
+ * Determine the effective subscription from user and org data
+ * @param {Object} userData - User subscription data
+ * @param {Object} orgData - Organization subscription data
+ * @returns {Object} Effective subscription
+ */
+function determineEffectiveSubscription(userData, orgData) {
+  // If no org data, use user data
+  if (!orgData) {
+    return {
+      status: userData.status,
+      endDate: userData.endDate || null,
+      isActive: !userData.endDate || new Date(userData.endDate) > new Date() || userData.status === 'free',
+      isOrgSubscription: false,
+      organizationId: userData.organizationId
+    };
+  }
+  
+  // Compare user and org subscriptions
+  const plans = ['free', 'basic', 'pro', 'team'];
+  const userPlanIndex = plans.indexOf(userData.status);
+  const orgPlanIndex = plans.indexOf(mapSubscriptionStatus(orgData.subscription_status));
+  
+  // Use organization plan if better
+  if (orgPlanIndex > userPlanIndex && orgPlanIndex >= 0) {
+    return {
+      status: mapSubscriptionStatus(orgData.subscription_status),
+      endDate: orgData.subscription_end_date || null,
+      isActive: !orgData.subscription_end_date || new Date(orgData.subscription_end_date) > new Date(),
+      isOrgSubscription: true,
+      organizationId: userData.organizationId,
+      orgSeats: orgData.subscription_seats || 0
+    };
+  }
+  
+  // Otherwise use user plan
+  return {
+    status: userData.status,
+    endDate: userData.endDate || null,
+    isActive: !userData.endDate || new Date(userData.endDate) > new Date() || userData.status === 'free',
+    isOrgSubscription: false,
+    organizationId: userData.organizationId
+  };
 }
 
 /**
@@ -130,6 +275,18 @@ export async function updateSubscription(email, status, endDate) {
       .eq('email', email);
       
     if (error) throw error;
+    
+    // After updating subscription in database, update local storage
+    const { user } = await chrome.storage.local.get(["user"]);
+    if (user && user.email === email) {
+      await chrome.storage.local.set({
+        subscription: {
+          status: status,
+          endDate: endDate || null,
+          isActive: true
+        }
+      });
+    }
     
     return { success: true, error: null };
   } catch (error) {
@@ -178,6 +335,7 @@ export async function updateOrgSubscription(orgId, status, endDate, seats = 5) {
  * @returns {boolean} Whether feature is available
  */
 export function hasFeatureAccess(featureName, subscriptionStatus = 'free') {
+  // If feature doesn't exist in map, default to no access
   const allowedTiers = featureAccessMap[featureName] || [];
   return allowedTiers.includes(subscriptionStatus);
 }
@@ -256,7 +414,7 @@ export async function getSubscriptionPrices() {
       prices: [
         { id: 'basic', name: 'Basic', price: 9.99, billing_cycle: 'monthly', features: ['basic-analytics', 'timeline-view'] },
         { id: 'pro', name: 'Professional', price: 19.99, billing_cycle: 'monthly', features: ['advanced-analytics', 'export-data', 'api-access'] },
-        { id: 'enterprise', name: 'Enterprise', price: 49.99, billing_cycle: 'monthly', features: ['custom-dashboards', 'team-management'] }
+        { id: 'team', name: 'Team', price: 49.99, billing_cycle: 'monthly', features: ['custom-dashboards', 'team-management'] }
       ],
       error 
     };
@@ -331,7 +489,55 @@ export async function getUserUsageStats() {
   }
 }
 
-// Upgrade to Pro feature
+/**
+ * Set a manual subscription override (useful for testing)
+ * @param {string} email - User email
+ * @param {string} status - Subscription status to set
+ * @returns {Promise<Object>} Result
+ */
+export async function setManualSubscription(email, status) {
+  try {
+    if (!email) {
+      throw new Error("Email is required for manual subscription");
+    }
+    
+    if (!['free', 'basic', 'pro', 'team'].includes(status)) {
+      throw new Error("Invalid subscription status");
+    }
+    
+    const subscription = {
+      email,
+      status,
+      endDate: status === 'free' ? null : new Date(Date.now() + (30 * 24 * 60 * 60 * 1000)).toISOString(),
+      isActive: true,
+      isManual: true
+    };
+    
+    await chrome.storage.local.set({ manualSubscription: subscription });
+    
+    return { success: true, subscription };
+  } catch (error) {
+    console.error("Error setting manual subscription:", error);
+    return { success: false, error };
+  }
+}
+
+/**
+ * Get default subscription (free)
+ * @returns {Object} Default subscription
+ */
+function getDefaultSubscription() {
+  return {
+    status: 'free',
+    endDate: null,
+    isActive: true,
+    isOrgSubscription: false
+  };
+}
+
+/**
+ * Open the payment dialog/page for upgrading to Pro
+ */
 export async function openPaymentDialog() {
   try {
     // Get user from local storage

@@ -53,10 +53,10 @@ const Analytics = ({ activities = [], closedOpportunities = [], opportunity, isO
   // Calculate closing times and prepare chart data
   useEffect(() => {
     if (closedOpportunities && closedOpportunities.length > 0) {
-      // Take only the last 7 closed opportunities and sort by actualclosedate
+      // Take only the last 15 closed opportunities and sort by actualclosedate
       const sortedOpportunities = [...closedOpportunities]
         .sort((a, b) => new Date(b.actualclosedate) - new Date(a.actualclosedate))
-        .slice(0, 7);
+        .slice(0, 10);
       
       // Calculate closing times (days between creation and close)
       const times = sortedOpportunities.map(opp => {
@@ -69,7 +69,7 @@ const Analytics = ({ activities = [], closedOpportunities = [], opportunity, isO
       
       const generateTooltips = async () => {
         // Create tooltip data for closed opportunities
-        const tooltipsPromises = sortedOpportunities.map(async (opp) => {
+        const tooltipsPromises = sortedOpportunities.map(async (opp, index) => {
           const url = await getOpportunityUrl(opp.opportunityid);
           
           return {
@@ -77,31 +77,37 @@ const Analytics = ({ activities = [], closedOpportunities = [], opportunity, isO
             description: opp.description || '',
             value: opp.estimatedvalue || opp.totalamount || 0,
             status: opp.statecode === 0 ? 'Open' : opp.statecode === 1 ? 'Won' : 'Lost',
-            // id: opp.opportunityid,//
             daysOpen: Math.floor((new Date(opp.actualclosedate) - new Date(opp.createdon)) / (1000 * 60 * 60 * 24)),
-            url: url
+            url: url,
+            id: opp.opportunityid
           };
         });
         
         // Wait for all URL generation promises to resolve
         const tooltips = await Promise.all(tooltipsPromises);
         
-        // Create labels for the chart
-        const labels = sortedOpportunities.map((_, index) => `Opp ${index + 1}`);
+        // Create labels for the chart - use short names instead of Opp 1, Opp 2, etc.
+        const labels = sortedOpportunities.map((opp, index) => 
+          opp.name ? (opp.name.length > 10 ? opp.name.substring(0, 10) + '...' : opp.name) : `Opp ${index + 1}`
+        );
         
         // Create data array with closed opportunities
         const data = [...times];
         
-        // Create background colors array (gray with transparency)
-        const backgroundColors = Array(times.length).fill('rgba(163, 163, 163, 0.7)'); // Grey with transparency
+        // Create background colors array - use conditional colors like in the image (won: green, lost: red)
+        const backgroundColors = sortedOpportunities.map(opp => {
+          // Use colors similar to the image - green for won, red for lost
+          return opp.statecode === 1 ? 'rgba(93, 182, 117, 0.7)' : 'rgba(199, 117, 93, 0.7)';
+        });
         
         // Add current opportunity data and tooltip
         let updatedTooltips = [...tooltips];
         
         if (opportunity && opportunity.createdon) {
+          // Add current opportunity to the beginning of the arrays
           labels.unshift('Current');
           data.unshift(currentOpportunityDays);
-          backgroundColors.unshift('rgba(52, 52, 52, 0.7)'); // Lime green with transparency
+          backgroundColors.unshift('rgba(92, 92, 92, 0.7)'); // Dark gray for current opportunity
           
           // Add current opportunity tooltip
           const currentUrl = await getOpportunityUrl(opportunity.opportunityid);
@@ -112,15 +118,15 @@ const Analytics = ({ activities = [], closedOpportunities = [], opportunity, isO
             value: opportunity.estimatedvalue || 0,
             status: 'Open',
             daysOpen: currentOpportunityDays,
-            url: currentUrl
+            url: currentUrl,
+            id: opportunity.opportunityid
           });
         }
         
         setTooltipData(updatedTooltips);
         
-        // Calculate average (excluding current opportunity for accurate historical average)
+        // Calculate average closing time
         const avgTime = Math.round(times.reduce((acc, time) => acc + time, 0) / (times.length || 1));
-        console.log("Average closing time calculated:", avgTime, "days");
         
         setAverageClosingTime(avgTime);
         
@@ -132,9 +138,11 @@ const Analytics = ({ activities = [], closedOpportunities = [], opportunity, isO
               label: 'Days',
               data,
               backgroundColor: backgroundColors,
+              borderWidth: 0,
               borderRadius: 4,
               borderSkipped: false,
-              barThickness: 30,
+              barThickness: 10,
+              maxBarThickness: 25
             }
           ]
         });
@@ -147,7 +155,6 @@ const Analytics = ({ activities = [], closedOpportunities = [], opportunity, isO
   // Function to handle bar click
   const handleBarClick = (event) => {
     if (!chartRef.current) {
-      console.log("Chart ref is not available");
       return;
     }
     
@@ -163,7 +170,6 @@ const Analytics = ({ activities = [], closedOpportunities = [], opportunity, isO
     
     // If no point was clicked, do nothing
     if (activePoints.length === 0) {
-      console.log("No active points found");
       return;
     }
     
@@ -171,24 +177,13 @@ const Analytics = ({ activities = [], closedOpportunities = [], opportunity, isO
     const clickedIndex = activePoints[0].index;
     const opportunityData = tooltipData[clickedIndex];
     
-    console.log("Clicked opportunity:", opportunityData);
-    
-    // If we have a valid URL, open it
-    if (opportunityData && opportunityData.url) {
-      console.log("Opening URL:", opportunityData.url);
-      window.open(opportunityData.url, '_blank');
-    } else if (opportunityData && opportunityData.id) {
-      // As a fallback, try to get the URL again
-      getOpportunityUrl(opportunityData.id)
-        .then(url => {
-          if (url) {
-            console.log("Opening dynamically generated URL:", url);
-            window.open(url, '_blank');
-          }
-        })
-        .catch(error => {
-          console.error("Error generating URL:", error);
-        });
+    // Navigate to the opportunity using the existing service worker functionality
+    if (opportunityData && opportunityData.id) {
+      // Use the existing NAVIGATE_TO_OPPORTUNITY message type
+      chrome.runtime.sendMessage({
+        type: "NAVIGATE_TO_OPPORTUNITY",
+        opportunityId: opportunityData.id
+      });
     }
   };
 
@@ -207,7 +202,7 @@ const Analytics = ({ activities = [], closedOpportunities = [], opportunity, isO
             const tooltipItem = tooltipData[index];
             return tooltipItem ? tooltipItem.name : `Opportunity ${index + 1}`;
           },
-          label: function(context) {
+                        label: function(context) {
             const index = context.dataIndex;
             const tooltipItem = tooltipData[index];
             
@@ -215,15 +210,11 @@ const Analytics = ({ activities = [], closedOpportunities = [], opportunity, isO
             
             const lines = [
               `Days Open: ${tooltipItem.daysOpen}`,
-              `Value: $${tooltipItem.value.toLocaleString()}`,
+              `Value: ${tooltipItem.value.toLocaleString()}`,
               `Status: ${tooltipItem.status}`
             ];
-
-            if (tooltipItem.id) {
-              lines.push(`ID: ${tooltipItem.id}`);
-            }
             
-            lines.push('Click to open opportunity');
+            lines.push('Click to navigate to opportunity');
             
             return lines;
           }
@@ -234,13 +225,19 @@ const Analytics = ({ activities = [], closedOpportunities = [], opportunity, isO
       y: {
         beginAtZero: true,
         grid: {
+          color: 'rgba(0, 0, 0, 0.05)',
           drawBorder: false,
         },
         ticks: {
           font: {
-            size: 12,
+            size: 11,
           },
+          padding: 5,
+          color: '#666',
         },
+        border: {
+          display: false,
+        }
       },
       x: {
         grid: {
@@ -248,9 +245,15 @@ const Analytics = ({ activities = [], closedOpportunities = [], opportunity, isO
         },
         ticks: {
           font: {
-            size: 12,
+            size: 10,
           },
+          color: '#666',
+          maxRotation: 45,
+          minRotation: 45,
         },
+        border: {
+          display: false,
+        }
       },
     },
     animation: {
@@ -282,13 +285,9 @@ const Analytics = ({ activities = [], closedOpportunities = [], opportunity, isO
         ctx.moveTo(xAxis.left, yPos);
         ctx.lineTo(xAxis.right, yPos);
         ctx.lineWidth = 1;
-        ctx.strokeStyle = '#2684ff';
+        ctx.strokeStyle = '#2196f3'; // Blue line for average like in the image
         ctx.stroke();
         ctx.restore();
-        
-        console.log(`Successfully drew line at ${avgValue} days, Y=${yPos}`);
-      } else {
-        console.log('Could not draw line, scales not available');
       }
     }
   };
@@ -306,11 +305,16 @@ const Analytics = ({ activities = [], closedOpportunities = [], opportunity, isO
         borderRadius: "8px",
         marginBottom: "16px"
       }}>
-        <div style={{ fontSize: "12px", color: "#666", marginBottom: "16px" }}>
-          Current vs Last 7 Closed Opportunities
+        <div style={{ 
+          fontSize: "14px", 
+          fontWeight: "600", 
+          color: "#333", 
+          marginBottom: "16px" 
+        }}>
+          Sales Cycle Length - Last 10 Closed Opportunities
         </div>
         
-        <div style={{ height: 200, position: 'relative' }}>
+        <div style={{ height: 280, position: 'relative' }}>
         {chartData.datasets && chartData.datasets[0] && chartData.datasets[0].data && chartData.datasets[0].data.length > 0 ? (
           <Bar 
             ref={chartRef}
@@ -333,22 +337,28 @@ const Analytics = ({ activities = [], closedOpportunities = [], opportunity, isO
           )}
         </div>
         
-        {/* Average indicator */}
+        {/* Average indicator - styled like in the image */}
         <div style={{ 
           display: "flex",
           alignItems: "center",
           marginTop: "16px",
           paddingTop: "8px",
+          paddingBottom: "8px",
           borderTop: "1px solid #e0e0e0"
         }}>
           <div style={{ 
-            width: "16px", 
-            height: "2px", 
-            backgroundColor: "#2684ff",
-            marginRight: "6px"
-          }}></div>
-          <div style={{ fontSize: "12px", color: "#666" }}>
-            Average: {averageClosingTime} days
+            display: "flex",
+            alignItems: "center"
+          }}>
+            <div style={{ 
+              width: "16px", 
+              height: "2px", 
+              backgroundColor: "#2196f3",
+              marginRight: "6px"
+            }}></div>
+            <div style={{ fontSize: "12px", color: "#666" }}>
+              Average: {averageClosingTime} days
+            </div>
           </div>
         </div>
       </div>

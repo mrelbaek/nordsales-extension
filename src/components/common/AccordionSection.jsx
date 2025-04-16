@@ -1,9 +1,10 @@
 import React from 'react';
-import { PiCaretDownLight, PiCaretRightLight } from "react-icons/pi";
+import { PiCaretRightLight } from "react-icons/pi";
 
 /**
  * Accordion section with toggle functionality - using only inline styles
  * with improved title handling for both string and complex content
+ * and smooth rotating caret animation
  * 
  * @param {Object} props - Component props
  * @param {string|React.ReactNode} props.title - Section title (string or React element)
@@ -41,12 +42,14 @@ const AccordionSection = ({ title, isOpen, onToggle, children, rightElement }) =
           alignItems: "center",
           flex: 1
         }}>
-          {/* Icon indicator */}
+          {/* Icon indicator with rotation animation */}
           <div style={{ 
             marginRight: "10px",
-            color: "#6b7c93"
+            color: "#6b7c93",
+            transform: isOpen ? "rotate(90deg)" : "rotate(0deg)",
+            transition: "transform 0.3s ease"
           }}>
-            {isOpen ? <PiCaretDownLight size={16}/> : <PiCaretRightLight size={16}/>}
+            <PiCaretRightLight size={16}/>
           </div>
           
           {/* Title section */}

@@ -716,7 +716,7 @@ export const fetchClosedOpportunities = async (
     }
     
     // Build the URL to fetch closed opportunities for current user
-    const url = `${baseUrl}/opportunities?$filter=statecode ne 0 and _ownerid_value eq ${currentUserId}&$select=name,statecode,opportunityid,totalamount,actualclosedate,totaldiscountamount,exchangerate,createdon&$orderby=actualclosedate desc`;
+    const url = `${baseUrl}/opportunities?$filter=statecode ne 0 and _ownerid_value eq ${currentUserId}&$select=name,statecode,_customerid_value,opportunityid,totalamount,actualclosedate,totaldiscountamount,exchangerate,createdon&$orderby=actualclosedate desc`;
     
     console.log("[OppUtil][fetchClosedOpportunities] Fetching closed opportunities...");
     console.log("[OppUtil][fetchClosedOpportunities] closed opportunity URL:", url);

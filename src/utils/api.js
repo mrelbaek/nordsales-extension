@@ -424,7 +424,7 @@ export const fetchClosedOpportunities = async (
     
     console.log(`[API] Fetching closed opportunities for user ${currentUserId}...`);
     
-    const url = `${baseUrl}/opportunities?$filter=statecode ne 0 and _ownerid_value eq ${currentUserId}&$select=name,statecode,opportunityid,totalamount,actualclosedate,totaldiscountamount,exchangerate,createdon&$orderby=actualclosedate desc`;
+    const url = `${baseUrl}/opportunities?$filter=statecode ne 0 and _ownerid_value eq ${currentUserId}&$select=name,statecode,opportunityid,_customerid_value,totalamount,actualclosedate,totaldiscountamount,exchangerate,createdon&$orderby=actualclosedate desc`;
     
     const response = await fetch(url, {
       headers: getDefaultHeaders(token),

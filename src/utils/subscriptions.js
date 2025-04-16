@@ -1,4 +1,6 @@
 import { supabase } from './supabase';
+import { supabaseAuth } from './supabaseAuth';
+
 
 export const featureAccessMap = {
   // Free Tier

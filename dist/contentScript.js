@@ -1,7 +1,7 @@
 (function() {
     // Logging function to help with debugging
     function log(message, ...args) {
-        console.log(`[NordSales ContentScript] ${message}`, ...args);
+        console.log(`[Lens ContentScript] ${message}`, ...args);
     }
   
     // Function to extract organization ID from the current URL
@@ -149,6 +149,40 @@
                         });
                         return true;
                     }
+                    
+                    // Add this new case for opportunity navigation
+                    case "NAVIGATE_TO_OPPORTUNITY": {
+                        if (message.opportunityId) {
+                            // Get the base URL for navigation
+                            const currentUrl = window.location.href;
+                            const baseUrl = currentUrl.split('/main.aspx')[0];
+                            
+                            // Extract the app ID from the current URL if available
+                            let appId = '';
+                            const appIdMatch = currentUrl.match(/appid=([^&]+)/);
+                            if (appIdMatch && appIdMatch[1]) {
+                                appId = appIdMatch[1];
+                            }
+                            
+                            // Create the navigation URL
+                            let navigationUrl;
+                            if (appId) {
+                                navigationUrl = `${baseUrl}/main.aspx?appid=${appId}&pagetype=entityrecord&etn=opportunity&id=${message.opportunityId}`;
+                            } else {
+                                navigationUrl = `${baseUrl}/main.aspx?etn=opportunity&id=${message.opportunityId}&pagetype=entityrecord`;
+                            }
+                            
+                            // Navigate to the opportunity
+                            log("Navigating to opportunity:", navigationUrl);
+                            window.location.href = navigationUrl;
+                            
+                            sendResponse({ success: true });
+                        } else {
+                            log("Navigation failed: No opportunity ID provided");
+                            sendResponse({ success: false, error: "No opportunity ID provided" });
+                        }
+                        return true;
+                    }
     
                     default:
                         log("Unhandled message type:", message.type);
@@ -182,4 +216,4 @@
   
     // Run main function
     main();
-  })();
+})();

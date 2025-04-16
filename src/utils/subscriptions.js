@@ -42,95 +42,110 @@ export async function getSubscriptionStatus() {
     
     if (!user || !user.email) {
       console.error("User not found in local storage");
-      return getDefaultSubscription();
+      return {
+        status: 'free',
+        isActive: true
+      };
     }
     
     console.log("Checking subscription status for email:", user.email);
     
-    // Check for manual override (useful for testing/debugging)
-    const { manualSubscription } = await chrome.storage.local.get(['manualSubscription']);
-    if (manualSubscription && manualSubscription.email === user.email) {
-      console.log("Using manual subscription override:", manualSubscription.status);
-      return manualSubscription;
-    }
-    
-    // Look up user by email 
+    // Look up user by email with explicit headers
     const { data: userData, error: fetchError } = await supabase
       .from('users')
       .select('subscription_status, subscription_end_date, trial_ends_at, organization_id, uid')
       .eq('email', user.email)
-      .single();
+      .single()
     
-    if (fetchError || !userData) {
+    if (fetchError) {
       console.error("Error fetching user data:", fetchError);
-      return getDefaultSubscription();
+      return {
+        status: 'free',
+        isActive: true
+      };
     }
     
-    // Log data for debugging
-    console.log("User subscription data from Supabase:", {
-      status: userData.subscription_status,
-      trialEndsAt: userData.trial_ends_at,
-      subscriptionEndDate: userData.subscription_end_date
-    });
-    
-    // Map database status, with active subscription taking priority over trial
-    const mappedStatus = mapSubscriptionStatus(
-      userData.subscription_status,
-      userData.trial_ends_at
-    );
-    
-    console.log("Mapped subscription status:", mappedStatus);
-    
-    // Calculate trial information if relevant
-    const isInTrial = mappedStatus === 'trial';
-    const trialDaysRemaining = isInTrial && userData.trial_ends_at ? 
-      Math.ceil((new Date(userData.trial_ends_at) - new Date()) / (1000 * 60 * 60 * 24)) : 0;
-    
-    // Check if organization has a subscription (for team plans)
-    if (userData.organization_id) {
-      const { data: orgData, error: orgError } = await supabase
-        .from('organizations')
-        .select('subscription_status, subscription_end_date, subscription_seats')
-        .eq('id', userData.organization_id)
-        .single();
-
-      if (!orgError && orgData && orgData.subscription_status) {
-        // Compare user vs org subscription, use the higher tier
-        const tiers = ['free', 'trial', 'basic', 'pro', 'team'];
-        const userTier = tiers.indexOf(mappedStatus);
-        const orgTier = tiers.indexOf(mapSubscriptionStatus(orgData.subscription_status));
-        
-        if (orgTier > userTier) {
-          return {
-            status: mapSubscriptionStatus(orgData.subscription_status),
-            endDate: orgData.subscription_end_date || null,
-            isActive: !orgData.subscription_end_date || new Date(orgData.subscription_end_date) > new Date(),
-            isOrgSubscription: true,
-            organizationId: userData.organization_id
-          };
-        }
+    // Special handling for trial status
+    if (userData.subscription_status === 'trialing' || userData.subscription_status === 'trial' && userData.trial_ends_at) {
+      const now = new Date();
+      const trialEndDate = new Date(userData.trial_ends_at);
+      
+      // Calculate days remaining in trial
+      const trialDaysRemaining = Math.max(0, Math.ceil((trialEndDate - now) / (1000 * 60 * 60 * 24)));
+      
+      // Check if trial is still active
+      const isTrialActive = trialEndDate > now;
+      
+      if (isTrialActive) {
+        return {
+          status: 'trial', // Pro features during trial
+          isActive: true,
+          trialActive: true,
+          trialDaysRemaining,
+          trialEndsAt: userData.trial_ends_at,
+          message: `You're in your ${trialDaysRemaining}-day trial period`,
+          isOrgSubscription: false
+        };
+      } else {
+        // Trial expired, revert to free
+        return {
+          status: 'free',
+          isActive: true,
+          trialActive: false,
+          trialExpired: true,
+          isOrgSubscription: false
+        };
       }
     }
     
-    // Return user subscription with trial info if applicable
-    const result = {
-      status: mappedStatus,
-      endDate: userData.subscription_end_date || null,
-      isActive: true
-    };
-    
-    if (isInTrial) {
-      result.trialEndsAt = userData.trial_ends_at;
-      result.trialDaysRemaining = trialDaysRemaining;
+    // Normal subscription handling for non-trial status
+    let mappedStatus = userData.subscription_status || 'free';
+    if (mappedStatus === 'active') {
+      mappedStatus = 'pro';
     }
     
-    // Store the subscription in local storage for faster access
-    await chrome.storage.local.set({ subscription: result });
+    // Check for organization subscription if applicable
+    if (userData.organization_id) {
+      try {
+        const { data: orgData, error: orgError } = await supabase
+          .from('organizations')
+          .select('subscription_status, subscription_end_date, subscription_seats')
+          .eq('id', userData.organization_id)
+          .single();
+
+        if (!orgError && orgData && orgData.subscription_status) {
+          // Compare user vs org subscription, use the higher tier
+          const tiers = ['free', 'basic', 'pro', 'team'];
+          const userTier = tiers.indexOf(mappedStatus);
+          const orgTier = tiers.indexOf(orgData.subscription_status);
+          
+          if (orgTier > userTier) {
+            return {
+              status: orgData.subscription_status,
+              endDate: orgData.subscription_end_date || null,
+              isActive: !orgData.subscription_end_date || new Date(orgData.subscription_end_date) > new Date(),
+              isOrgSubscription: true
+            };
+          }
+        }
+      } catch (orgError) {
+        console.error("Error checking organization subscription:", orgError);
+        // Continue with user subscription
+      }
+    }
     
-    return result;
+    return {
+      status: mappedStatus,
+      endDate: userData.subscription_end_date || null,
+      isActive: !userData.subscription_end_date || new Date(userData.subscription_end_date) > new Date(),
+      isOrgSubscription: false
+    };
   } catch (err) {
     console.error("Error in getSubscriptionStatus:", err);
-    return getDefaultSubscription();
+    return {
+      status: 'free',
+      isActive: true
+    };
   }
 }
 

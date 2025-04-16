@@ -4,8 +4,8 @@ import React from 'react';
  * Component to display trial status and remaining days
  */
 const TrialStatus = ({ subscription }) => {
-  // Don't render anything if not in trial status or no subscription data
-  if (!subscription || subscription.status !== 'trial') {
+  // Don't render anything if not in trial
+  if (!subscription?.trialActive) {
     return null;
   }
   
@@ -37,6 +37,7 @@ const TrialStatus = ({ subscription }) => {
         <span style={{ fontWeight: 'bold' }}>
           Trial Active: 
         </span>
+        {' '}
         {subscription.message || `Expires in ${daysRemaining} days`}
       </div>
       

@@ -6,8 +6,6 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-console.log("Running post-build script...");
-
 // Ensure dist directory exists
 if (!fs.existsSync(path.join(__dirname, 'dist'))) {
   fs.mkdirSync(path.join(__dirname, 'dist'), { recursive: true });
@@ -18,7 +16,6 @@ try {
   const srcContentScriptPath = path.join(__dirname, 'src', 'contentScript.js');
   const distContentScriptPath = path.join(__dirname, 'dist', 'contentScript.js');
   fs.copyFileSync(srcContentScriptPath, distContentScriptPath);
-  console.log('Content script copied to dist folder');
 } catch (error) {
   console.error('Error copying content script:', error);
 }
@@ -28,7 +25,6 @@ try {
   const serviceWorkerPath = path.join(__dirname, 'service-worker.js');
   const distServiceWorkerPath = path.join(__dirname, 'dist', 'service-worker.js');
   fs.copyFileSync(serviceWorkerPath, distServiceWorkerPath);
-  console.log('Service worker copied to dist folder');
 } catch (error) {
   console.error('Error copying service worker:', error);
 }
@@ -47,7 +43,6 @@ try {
   
   // Write to the dist folder
   fs.writeFileSync(distPopupHtmlPath, popupHtml);
-  console.log('Created popup.html in dist folder');
   
   // Check if we need to copy JS/CSS files from the build output
   const srcPopupJsDir = path.join(__dirname, 'dist', 'src', 'pages', 'popup');
@@ -60,7 +55,6 @@ try {
           path.join(srcPopupJsDir, file), 
           path.join(__dirname, 'dist', file)
         );
-        console.log(`Copied ${file} to dist root`);
       }
     }
   }
@@ -126,7 +120,6 @@ try {
 </html>`;
 
   fs.writeFileSync(path.join(__dirname, 'dist', 'options.html'), optionsHtml);
-  console.log('Created options.html in dist folder');
 } catch (error) {
   console.error('Error creating options.html:', error);
 }
@@ -142,7 +135,6 @@ try {
     
     if (fs.existsSync(srcIconPath)) {
       fs.copyFileSync(srcIconPath, distIconPath);
-      console.log(`Copied icon${size}.png to dist folder`);
     } else {
       console.warn(`Warning: icon${size}.png not found in public folder`);
     }
@@ -161,7 +153,6 @@ try {
     path.join(__dirname, 'dist', 'manifest.json'), 
     JSON.stringify(originalManifest, null, 2)
   );
-  console.log('Created complete manifest.json in dist folder');
 } catch (error) {
   console.error('Error creating manifest.json:', error);
 }
@@ -170,7 +161,6 @@ try {
 const buildManifestPath = path.join(__dirname, 'build-manifest.json');
 if (fs.existsSync(buildManifestPath)) {
   fs.unlinkSync(buildManifestPath);
-  console.log('Removed temporary build manifest');
 }
 
 console.log('Post-build process completed');

@@ -1,8 +1,12 @@
+const DEBUG = false;
+
 // Modified service-worker.js with direct tab navigation
-console.log("NordSales service worker initialized");
+if (DEBUG) console.log("NordSales service worker initialized");
 
 // Storage for polling intervals by tab ID
 const tabPollingIntervals = {};
+// Track content script injection status
+const contentScriptInjected = {};
 
 // Helper function to extract organization ID from URL
 function extractOrgIdFromUrl(url) {
@@ -23,7 +27,7 @@ async function navigateToOpportunity(tabId, opportunityId) {
     const tab = await chrome.tabs.get(tabId);
     
     if (!tab || !tab.url || !tab.url.includes('crm.dynamics.com')) {
-      console.warn("Tab is not a Dynamics CRM tab");
+      if (DEBUG) console.warn("Tab is not a Dynamics CRM tab");
       return false;
     }
     
@@ -43,7 +47,10 @@ async function navigateToOpportunity(tabId, opportunityId) {
     await chrome.tabs.update(tabId, { url: opportunityUrl });
 
     // After navigation, wait and re-check for opportunity
-    setTimeout(() => {
+    setTimeout(async () => {
+      // Make sure content script is injected after navigation
+      await ensureContentScriptInjected(tabId);
+      
       chrome.tabs.sendMessage(tabId, { type: "CHECK_OPPORTUNITY_ID" }, (response) => {
         if (chrome.runtime.lastError) {
           console.warn("CHECK_OPPORTUNITY_ID error:", chrome.runtime.lastError.message);
@@ -58,6 +65,8 @@ async function navigateToOpportunity(tabId, opportunityId) {
           chrome.runtime.sendMessage({
             type: "OPPORTUNITY_DETECTED",
             opportunityId: response.opportunityId
+          }).catch(() => {
+            // Popup might not be open, that's fine
           });
         }
       });
@@ -66,10 +75,7 @@ async function navigateToOpportunity(tabId, opportunityId) {
     // Wait and re-check for opportunity ID
     setTimeout(() => {
       pollForOpportunityChanges(tabId);
-    }, 1000);
-    
-    // Close the extension popup if it's open
-    // Note: This doesn't seem to be directly possible, but the navigation should cause the popup to close
+    }, 2000);
     
     return true;
   } catch (error) {
@@ -78,60 +84,108 @@ async function navigateToOpportunity(tabId, opportunityId) {
   }
 }
 
-// Poll for opportunity changes
-function pollForOpportunityChanges(tabId) {
-  chrome.tabs.get(tabId).then(tab => {
-    if (tab && tab.url && tab.url.includes('crm.dynamics.com')) {
-      const orgId = extractOrgIdFromUrl(tab.url);
-      
-      if (orgId) {
-        chrome.storage.local.set({
-          currentOrgId: orgId,
-          lastOrgIdUpdated: Date.now()
-        });
-      }
-      
-      chrome.tabs.sendMessage(tabId, { type: "CHECK_OPPORTUNITY_ID" }, response => {
-        if (chrome.runtime.lastError) {
-          console.error("Message error:", chrome.runtime.lastError.message);
-          chrome.scripting.executeScript({
-            target: { tabId },
-            files: ["contentScript.js"]
-          }).catch(err => {
-            console.error("Error re-injecting content script:", err);
-          });
-          return;
-        }
-        
-        if (response && response.opportunityId) {
-          chrome.storage.local.set({
-            currentOpportunityId: response.opportunityId,
-            lastUpdated: Date.now(),
-          });
-          
-          chrome.runtime.sendMessage({
-            type: "OPPORTUNITY_DETECTED",
-            opportunityId: response.opportunityId,
-            organizationId: response.organizationId || orgId,
-            timestamp: Date.now()
-          }).catch(() => {
-            // Popup not open, that's fine
-          });
-        } else {
-          chrome.storage.local.remove(['currentOpportunityId', 'lastUpdated']);
-          chrome.runtime.sendMessage({ type: "OPPORTUNITY_CLEARED" }).catch(() => {
-            // Popup not open, that's fine
-          });
-        }
+// Ensure content script is injected and ready
+async function ensureContentScriptInjected(tabId) {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    
+    if (!tab || !tab.url || !tab.url.includes('crm.dynamics.com')) {
+      return false;
+    }
+    
+    if (!contentScriptInjected[tabId]) {
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        files: ["contentScript.js"]
       });
-    } else {
+      
+      contentScriptInjected[tabId] = true;
+      
+      // Give the content script a moment to initialize
+      return new Promise(resolve => setTimeout(resolve, 500));
+    }
+    
+    return true;
+  } catch (error) {
+    console.warn("Error ensuring content script:", error);
+    return false;
+  }
+}
+
+// Poll for opportunity changes
+async function pollForOpportunityChanges(tabId) {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    
+    if (!tab || !tab.url || !tab.url.includes('crm.dynamics.com')) {
       clearInterval(tabPollingIntervals[tabId]);
       delete tabPollingIntervals[tabId];
+      delete contentScriptInjected[tabId];
+      return;
     }
-  }).catch(() => {
+    
+    const orgId = extractOrgIdFromUrl(tab.url);
+    
+    if (orgId) {
+      chrome.storage.local.set({
+        currentOrgId: orgId,
+        lastOrgIdUpdated: Date.now()
+      });
+    }
+    
+    // Make sure content script is injected before sending message
+    await ensureContentScriptInjected(tabId);
+    
+    // Send message with a timeout
+    const sendMessageWithTimeout = () => {
+      return new Promise((resolve) => {
+        chrome.tabs.sendMessage(tabId, { type: "CHECK_OPPORTUNITY_ID" }, (response) => {
+          if (chrome.runtime.lastError) {
+            if (DEBUG) console.warn("Message error:", chrome.runtime.lastError.message);
+            
+            // Mark content script as needing re-injection on next poll
+            contentScriptInjected[tabId] = false;
+            resolve(null);
+            return;
+          }
+          
+          resolve(response);
+        });
+        
+        // Resolve after timeout if no response
+        setTimeout(() => resolve(null), 1000);
+      });
+    };
+    
+    const response = await sendMessageWithTimeout();
+    
+    if (response && response.opportunityId) {
+      chrome.storage.local.set({
+        currentOpportunityId: response.opportunityId,
+        lastUpdated: Date.now(),
+      });
+      
+      chrome.runtime.sendMessage({
+        type: "OPPORTUNITY_DETECTED",
+        opportunityId: response.opportunityId,
+        organizationId: response.organizationId || orgId,
+        timestamp: Date.now()
+      }).catch(() => {
+        // Popup not open, that's fine
+      });
+    } else {
+      chrome.storage.local.remove(['currentOpportunityId', 'lastUpdated']);
+      chrome.runtime.sendMessage({ type: "OPPORTUNITY_CLEARED" }).catch(() => {
+        // Popup not open, that's fine
+      });
+    }
+  } catch (error) {
+    if (DEBUG) console.warn("Error in polling:", error);
+    
     clearInterval(tabPollingIntervals[tabId]);
     delete tabPollingIntervals[tabId];
-  });
+    delete contentScriptInjected[tabId];
+  }
 }
 
 // Start polling for a tab
@@ -145,42 +199,51 @@ function startOpportunityPolling(tabId) {
   }, 2000); // Poll every 2 seconds
 }
 
-// Listen for tab updates
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (changeInfo.status === 'complete' && tab.url && tab.url.includes('crm.dynamics.com')) {
-    
-    const orgId = extractOrgIdFromUrl(tab.url);
-    if (orgId) {
-      chrome.storage.local.set({ currentOrgId: orgId });
-    }
-    
-    chrome.scripting.executeScript({
-      target: { tabId },
-      files: ["contentScript.js"]
-    }).then(() => {
-      startOpportunityPolling(tabId);
-    }).catch((err) => {
-      console.error("Error injecting content script:", err);
-    });
-    
-    // Check auto-open setting for notification badges
-    chrome.storage.local.get(['autoOpen'], (result) => {
-      const autoOpen = result.autoOpen !== false;
-      if (autoOpen) {
-        chrome.action.setBadgeText({ text: "!" });
-        chrome.action.setBadgeBackgroundColor({ color: "#0078d4" });
+  if (changeInfo.status === 'complete') {
+    const isCRM = tab.url?.includes('crm.dynamics.com');
+
+    // Send context update to popup
+    chrome.runtime.sendMessage({
+      type: 'TAB_CONTEXT_UPDATE',
+      isCRM
+    }).catch(() => {});
+
+    if (isCRM) {
+      const orgId = extractOrgIdFromUrl(tab.url);
+      if (orgId) {
+        chrome.storage.local.set({ currentOrgId: orgId });
       }
-    });
-  } else if (changeInfo.status === 'complete' && tab.url && !tab.url.includes('crm.dynamics.com')) {
-    chrome.action.setBadgeText({ text: "" });
+
+      // Mark as needing injection
+      contentScriptInjected[tabId] = false;
+      
+      ensureContentScriptInjected(tabId).then(() => {
+        startOpportunityPolling(tabId);
+      }).catch((err) => {
+        console.error("Error injecting content script:", err);
+      });
+
+      chrome.storage.local.get(['autoOpen'], (result) => {
+        const autoOpen = result.autoOpen !== false;
+        if (autoOpen) {
+          chrome.action.setBadgeText({ text: "!" });
+          chrome.action.setBadgeBackgroundColor({ color: "#0078d4" });
+        }
+      });
+    } else {
+      chrome.action.setBadgeText({ text: "" });
+    }
   }
 });
+
 
 // Clean up polling when tabs are closed
 chrome.tabs.onRemoved.addListener((tabId) => {
   if (tabPollingIntervals[tabId]) {
     clearInterval(tabPollingIntervals[tabId]);
     delete tabPollingIntervals[tabId];
+    delete contentScriptInjected[tabId];
   }
 });
 
@@ -207,7 +270,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     
     // Try to forward to popup if open
     chrome.runtime.sendMessage(message).catch(err => {
-      console.warn("Could not forward message to side panel (probably not open)");
+      if (DEBUG) console.warn("Could not forward message to side panel (probably not open)");
     });
     
     sendResponse({ success: true });
@@ -217,7 +280,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "OPPORTUNITY_CLEARED") {
     // Add a debounce mechanism
     if (this.lastClearedTimestamp && (Date.now() - this.lastClearedTimestamp < 500)) {
-      console.log("Duplicate opportunity clear message, skipping");
       return;
     }
     
@@ -225,7 +287,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     
     // Forward the message
     chrome.runtime.sendMessage(message).catch(err => {
-      console.warn("Could not forward message to side panel", err);
+      if (DEBUG) console.warn("Could not forward message to side panel", err);
     });
     
     sendResponse({ success: true });
@@ -243,11 +305,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             chrome.storage.local.set({ currentOrgId: orgId });
           }
   
-          // ✅ Ensure contentScript is injected
-          chrome.scripting.executeScript({
-            target: { tabId: currentDynamicsTab },
-            files: ["contentScript.js"]
-          }).then(() => {
+          // Mark as needing injection
+          contentScriptInjected[currentDynamicsTab] = false;
+          
+          // Ensure content script is injected
+          ensureContentScriptInjected(currentDynamicsTab).then(() => {
             chrome.tabs.sendMessage(currentDynamicsTab, { type: "CHECK_OPPORTUNITY_ID" }, response => {
               if (chrome.runtime.lastError) {
                 console.warn("Error communicating with content script:", chrome.runtime.lastError.message);
@@ -265,7 +327,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                   opportunityId: response.opportunityId,
                   organizationId: response.organizationId || orgId
                 }).catch(err => {
-                  console.warn("Could not send to side panel:", err);
+                  if (DEBUG) console.warn("Could not send to side panel:", err);
                 });
               }
             });
@@ -284,7 +346,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   
   
-  // NEW HANDLER: Navigate to opportunity in the current tab
+  // Navigate to opportunity in the current tab
   if (message.type === "NAVIGATE_TO_OPPORTUNITY") {
     chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
       if (tabs && tabs.length > 0) {
@@ -312,7 +374,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // Handle extension installation or update
 chrome.runtime.onInstalled.addListener(() => {
-  console.log("Lens extension installed/updated");
   chrome.storage.local.get(['autoOpen', 'currentOrgId'], (result) => {
     if (result.autoOpen === undefined) {
       chrome.storage.local.set({ autoOpen: true });

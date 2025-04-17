@@ -10,11 +10,10 @@
 
         if (accessToken) {
             chrome.storage.local.set({ accessToken }, () => {
-                console.log("✅ Access token saved!");
                 window.close();
             });
         } else {
-            console.error("❌ Authentication failed");
+            console.error("[auth.html]Authentication failed");
             window.close();
         }
     </script>

@@ -1,8 +1,9 @@
-console.log('Background script running...');
+const DEBUG = false;
+if (DEBUG) console.log('Background script running...');
 
 // Initialize default values when extension is installed
 chrome.runtime.onInstalled.addListener(() => {
-  console.log('Extension installed');
+  if (DEBUG) console.log('Extension installed');
   
   // Set default values
   chrome.storage.local.set({
@@ -16,7 +17,7 @@ chrome.runtime.onInstalled.addListener(() => {
 
 // Listen for messages from popup or options page
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  console.log('Received message:', message);
+  if (DEBUG) console.log('Received message:', message);
   
   if (message.type === 'GET_DATA') {
     // Example of fetching some data

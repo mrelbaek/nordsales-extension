@@ -1,3 +1,5 @@
+const DEBUG = false;
+
 // session.js - Handles Supabase session management
 
 import { supabase } from './supabase';
@@ -24,7 +26,7 @@ export async function restoreSupabaseSession() {
     
     if (supabaseSession) {
       await supabase.auth.setSession(supabaseSession);
-      console.log("Supabase session restored");
+      if (DEBUG) console.log("Supabase session restored");
       return true;
     }
     

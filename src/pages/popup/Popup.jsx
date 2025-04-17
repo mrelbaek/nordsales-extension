@@ -52,6 +52,7 @@ const Popup = () => {
   const stateTransitionLock = useRef(false);
   const lastOpportunityIdRef = useRef(null);
   const debounceTimerRef = useRef(null);
+  const [isOnCrmTab, setIsOnCrmTab] = useState(true);
 
   // Initialize subscription information
   const initializeSubscriptions = async () => {
@@ -88,7 +89,6 @@ const Popup = () => {
       // Validate inputs
       if (!token) {
         console.error("[Popup.jsx] No token provided to handleFetchOpportunityDetails");
-        setError("Authentication required");
         return;
       }
       
@@ -389,6 +389,11 @@ const Popup = () => {
     // Listen for opportunity detection from content script
     const handleMessage = (message) => {
     
+    // Listen for CRM tab open  
+    if (message.type === "TAB_CONTEXT_UPDATE") {
+      setIsOnCrmTab(message.isCRM);
+    }
+
       // Prevent concurrent or redundant operations
       if (stateTransitionLock.current) {
         return;
@@ -823,6 +828,16 @@ const Popup = () => {
    */
   const renderContent = () => {
     try {
+
+      if (!isOnCrmTab) {
+        return (
+          <div style={{ padding: "20px", textAlign: "center" }}>
+            <h3>Lens is inactive</h3>
+            <p>Please switch to your Dynamics CRM tab to use this extension.</p>
+          </div>
+        );
+      }
+
       // Show organization selection message if no org ID is detected
       if (!organizationId) {
         return (

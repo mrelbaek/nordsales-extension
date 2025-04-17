@@ -1,7 +1,10 @@
 (function() {
+
+    const DEBUG = false;
+    
     // Logging function to help with debugging
     function log(message, ...args) {
-        console.log(`[Lens ContentScript] ${message}`, ...args);
+        if (DEBUG) console.log(`[Lens ContentScript] ${message}`, ...args);
     }
   
     // Function to extract organization ID from the current URL

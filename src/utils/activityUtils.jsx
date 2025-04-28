@@ -176,14 +176,129 @@ export const calculateDaysSinceLastContact = (activities) => {
 };
 
 /**
- * Get label describing recency of last activity
- * @param {number|null} days - Days since last activity
- * @returns {Object} Object with text and color for the label
+ * Get a formatted label for how recent an activity was
+ * @param {number} days - Number of days since last activity
+ * @returns {Object} Object containing text and color for the label
  */
 export const getActivityRecencyLabel = (days) => {
-  if (days === null) return { text: "No activity", color: "#9e9e9e" };
-  if (days <= 3) return { text: "Last 3 days", color: "#4caf50" };
-  if (days <= 7) return { text: "Last 7 days", color: "#2196f3" };
-  if (days <= 14) return { text: "Last 2 weeks", color: "#ff9800" };
+  if (days === null) {
+    return { text: "No activity", color: "#9e9e9e" };
+  }
+  if (days === 0) {
+    return { text: "Today", color: "#4caf50" };
+  }
+  if (days === 1) {
+    return { text: "Yesterday", color: "#4caf50" };
+  }
+  if (days <= 7) {
+    return { text: `${days} days ago`, color: "#4caf50" };
+  }
+  if (days <= 14) {
+    return { text: `${days} days ago`, color: "#8bc34a" };
+  }
+  if (days <= 30) {
+    return { text: `${days} days ago`, color: "#ff9800" };
+  }
   return { text: `${days} days ago`, color: "#f44336" };
+};
+
+/**
+ * Get the latest activity date for an opportunity
+ * @param {Object} opportunity - Opportunity object with activities array
+ * @returns {Date|null} Latest activity date or null if no activities
+ */
+export const getLatestActivityDate = (opportunity) => {
+  if (!opportunity || !Array.isArray(opportunity.activities) || opportunity.activities.length === 0) {
+    return null;
+  }
+  
+  try {
+    const activities = opportunity.activities;
+    const activityDates = activities
+      .map(activity => {
+        const date = getActivityDate(activity);
+        return date ? date.getTime() : 0;
+      })
+      .filter(timestamp => timestamp > 0);
+    
+    if (activityDates.length === 0) return null;
+    
+    const latestTimestamp = Math.max(...activityDates);
+    return new Date(latestTimestamp);
+  } catch (err) {
+    console.warn('Error getting latest activity date:', err);
+    return null;
+  }
+};
+
+/**
+ * Sort opportunities based on specified criteria
+ * @param {Array} opportunities - Array of opportunity objects
+ * @param {string} sortOption - Sort option ('value', 'closingDate', or 'lastActivity')
+ * @returns {Array} Sorted opportunities array
+ */
+export const sortOpportunities = (opportunities, sortOption, sortDirection = 'desc') => {
+  if (!Array.isArray(opportunities) || opportunities.length === 0) {
+    return [];
+  }
+  
+  const opportunitiesToSort = [...opportunities];
+  let sortedOpportunities = [];
+  
+  switch (sortOption) {
+    case 'value':
+      sortedOpportunities = opportunitiesToSort.sort((a, b) => 
+        (b.estimatedvalue || 0) - (a.estimatedvalue || 0)
+      );
+      break;
+      
+    case 'closingDate':
+      sortedOpportunities = opportunitiesToSort.sort((a, b) => {
+        const dateA = a.estimatedclosedate ? new Date(a.estimatedclosedate) : new Date(9999, 11, 31);
+        const dateB = b.estimatedclosedate ? new Date(b.estimatedclosedate) : new Date(9999, 11, 31);
+        return dateA - dateB;
+      });
+      break;
+      
+    case 'lastActivity':
+      sortedOpportunities = opportunitiesToSort.sort((a, b) => {
+        const dateA = getLatestActivityDate(a);
+        const dateB = getLatestActivityDate(b);
+        
+        // Handle cases where one or both opportunities have no activities
+        if (!dateA && !dateB) return 0;
+        if (!dateA) return 1; // b comes first (has activity)
+        if (!dateB) return -1; // a comes first (has activity)
+        
+        // Sort by most recent activity first
+        return dateB - dateA;
+      });
+      break;
+      
+    default:
+      sortedOpportunities = opportunitiesToSort;
+  }
+  
+  // If ascending order is requested, reverse the sorted array
+  // This handles 'lastActivity' differently - for ascending, items with no activity come first
+  if (sortDirection === 'asc') {
+    if (sortOption === 'lastActivity') {
+      return sortedOpportunities.sort((a, b) => {
+        const dateA = getLatestActivityDate(a);
+        const dateB = getLatestActivityDate(b);
+        
+        // Handle cases where one or both opportunities have no activities
+        if (!dateA && !dateB) return 0;
+        if (!dateA) return -1; // a comes first (no activity)
+        if (!dateB) return 1; // b comes first (no activity)
+        
+        // Sort by oldest activity first
+        return dateA - dateB;
+      });
+    } else {
+      return sortedOpportunities.reverse();
+    }
+  }
+  
+  return sortedOpportunities;
 };

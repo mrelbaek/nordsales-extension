@@ -6,11 +6,20 @@ import { getActivityDate } from './activityUtils';
  * @param {Date|string|null} endDate - End date (defaults to current date if null)
  * @returns {number} Number of days between dates
  */
-export const calculateDaysBetween = (startDate, endDate) => {
+export const calculateDaysBetween = (startDate, endDate, allowNegative = false) => {
   const start = new Date(startDate);
   const end = endDate ? new Date(endDate) : new Date();
-  const diffTime = Math.abs(end - start);
-  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  
+  // Calculate difference in milliseconds
+  const diffTime = end - start;
+  
+  // If we want to allow negative values (for dates in the past)
+  if (allowNegative) {
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  }
+  
+  // Otherwise use absolute value as before
+  return Math.ceil(Math.abs(diffTime) / (1000 * 60 * 60 * 24));
 };
 
 /**

@@ -54,6 +54,28 @@ const Popup = () => {
   const debounceTimerRef = useRef(null);
   const [isOnCrmTab, setIsOnCrmTab] = useState(true);
 
+  // Check CRM tab status more actively
+  const checkCrmTabStatus = async () => {
+    try {
+      const response = await new Promise((resolve) => {
+        chrome.runtime.sendMessage({ type: "GET_CRM_STATUS" }, (result) => {
+          resolve(result || { success: false, isCRM: false });
+        });
+      });
+      
+      if (response && response.success) {
+        setIsOnCrmTab(response.isCRM);
+        
+        if (response.isCRM && response.orgId && !organizationId) {
+          setOrganizationId(response.orgId);
+          chrome.storage.local.set({ "organizationId": response.orgId });
+        }
+      }
+    } catch (error) {
+      console.warn("Error checking CRM tab status:", error);
+    }
+  };
+
   // Initialize subscription information
   const initializeSubscriptions = async () => {
     try {
@@ -81,7 +103,6 @@ const Popup = () => {
 
   /**
    * Fetch opportunity details and set state
-   * This is the missing function that was causing the error
    */
   const handleFetchOpportunityDetails = async (token, oppId) => {
     try {
@@ -191,269 +212,272 @@ const Popup = () => {
     }
   };
 
-  // Initialize the app
-  useEffect(() => {
-    async function initialize() {
-      try {
-        // Prevent multiple initializations
-        if (stateTransitionLock.current) {
-          return;
-        }
-        
-        stateTransitionLock.current = true;
-        
-        // Check Supabase connection but don't fail if there's an issue
-        try {
-          const supabaseStatus = await checkSupabaseConnection();
-          if (!supabaseStatus.connected) {
-            console.warn("Supabase connection issue:", supabaseStatus.error);
-            // Continue anyway - we can still use the app with limited functionality
-          }
-        } catch (supabaseError) {
-          console.warn("Error checking Supabase connection:", supabaseError);
-          // Continue anyway
-        }
-        
-        // Notify service worker that popup is open
-        chrome.runtime.sendMessage({ type: "POPUP_OPENED" }).catch((err) => {
-          console.warn("[Popup] POPUP_OPENED:", err?.message || err);
-        });
-        
-        // Clear any existing errors
-        setError(null);
-        setDebugInfo(null);
-        
-        // Get organization ID
-        try {
-          const orgId = await getCurrentOrgId();
-          setOrganizationId(orgId);
-          
-          if (orgId) {
-            chrome.storage.local.set({ "organizationId": orgId });
-          }
-    
-          if (!orgId) {
-            // Wait and retry in 500ms
-            await new Promise(resolve => setTimeout(resolve, 500));
-            const retryOrgId = await getCurrentOrgId();
-            setOrganizationId(retryOrgId);
-            if (!retryOrgId) {
-              setError("Please navigate to your Dynamics CRM environment first to use this extension.");
-              stateTransitionLock.current = false;
-              return;
-            }
-          }
-        } catch (orgError) {
-          console.warn("Error getting organization ID:", orgError);
-          setError("Could not determine your Dynamics CRM organization. Please navigate to Dynamics CRM first.");
-          stateTransitionLock.current = false;
-          return;
-        }
-        
-        // Check if already logged in
-        const loggedIn = await isLoggedIn();
-        
-        if (loggedIn) {
-          // Get stored token
-          const { accessToken } = await chrome.storage.local.get(["accessToken"]);
-          setAccessToken(accessToken);
-          
-          // Get user information
-          const userData = await getCurrentUser();
-          setUser(userData);
-          
-          try {
-            // Try to initialize subscriptions but don't fail if it doesn't work
-            await initializeSubscriptions();
-          } catch (subscriptionError) {
-            console.warn("Error initializing subscriptions, continuing with free tier:", subscriptionError);
-            setSubscription({ status: 'free', isActive: true });
-          }
-          
-          // console.log("[Popup.jsx] Got access token:", accessToken ? "yes" : "no");
-          
-          // Try to get current opportunity ID
-          try {
-            const oppId = await getCurrentOpportunityId();
-            
-            // Only update state if ID actually changed to prevent loops
-            if (oppId) {
-              setCurrentOpportunityId(oppId); // ✅ Triggers the centralized fetch logic in useEffect
-            } else {
-              await handleFetchOpportunities(accessToken);
-            }
-            
-            // Fetch data
-            if (oppId) {
-              // Set a temporary loading state for better UX
-              setCurrentOpportunity({
-                opportunityid: oppId,
-                name: "Loading...",
-                loading: true
-              });
-                            
-              // Fetch the opportunity details with a small timeout to ensure state is updated
-              setTimeout(async () => {
-                try {
-                  await fetchOpportunityDetails(
-                    accessToken,
-                    oppId,
-                    (isLoading) => setLoading(isLoading),
-                    setError,
-                    setCurrentOpportunity,
-                    setActivities
-                  );
-
-                  lastOpportunityIdRef.current = oppId;
-
-                } catch (fetchError) {
-                  console.error("[Popup.jsx] Error loading initial opportunity:", fetchError);
-                  // If there's an error, fall back to the list view
-                  setCurrentOpportunity(null);
-                  setCurrentOpportunityId(null);
-                  await handleFetchOpportunities(accessToken);
-                }
-              }, 100);
-            } else {
-              await handleFetchOpportunities(accessToken);
-            }
-            
-            // Also fetch closed opportunities for analytics
-            await handleFetchClosedOpportunities(accessToken);
-          } catch (idError) {
-            console.warn("Error getting opportunity ID:", idError);
-            await handleFetchOpportunities(accessToken);
-            await handleFetchClosedOpportunities(accessToken);
-          }
-        } else {
-        }
-  
-        // Get the auto-open preference
-        chrome.storage.local.get(['autoOpen'], (result) => {
-          setAutoOpen(result.autoOpen !== false);
-        });
-      } catch (error) {
-        console.error("Initialization error:", error);
-        setError("Failed to initialize extension: " + error.message);
-        setDebugInfo({
-          errorType: "Initialization Error",
-          message: error.message,
-          timestamp: new Date().toISOString(),
-        });
-      } finally {
-        // Release the lock
-        stateTransitionLock.current = false;
-      }
-    }
-    
-    initialize();
-    
-    // Set up polling for opportunity ID changes with debouncing
-    const storageCheckInterval = setInterval(() => {
-      if (stateTransitionLock.current) return;
-    
-      chrome.storage.local.get(['currentOpportunityId', 'lastUpdated', 'currentOrgId'], (result) => {
-        const newId = result.currentOpportunityId;
-    
-        // More conservative check for clearing opportunity
-        if (!newId && (currentOpportunityId || lastOpportunityIdRef.current)) {
-          
-          // Prevent multiple simultaneous resets
-          if (stateTransitionLock.current) return;
-          
-          stateTransitionLock.current = true;
-          
-          setCurrentOpportunityId(null);
-          setCurrentOpportunity(null);
-          lastOpportunityIdRef.current = null;
-          
-          if (accessToken) {
-            setTimeout(async () => {
-              try {
-                await handleFetchOpportunities(accessToken);
-              } catch (error) {
-                console.error("[Popup.jsx] Error refetching opportunities:", error);
-              } finally {
-                stateTransitionLock.current = false;
-              }
-            }, 500);
-          }
-          return;
-        }
-    
-        // Rest of the existing interval logic...
-      });
-    }, 2000);  // Increased interval to reduce frequency
-    
-    
-    // Listen for opportunity detection from content script
-    const handleMessage = (message) => {
-    
-    // Listen for CRM tab open  
-    if (message.type === "TAB_CONTEXT_UPDATE") {
-      setIsOnCrmTab(message.isCRM);
-    }
-
-      // Prevent concurrent or redundant operations
+// Initialize the app
+useEffect(() => {
+  async function initialize() {
+    try {
+      // Prevent multiple initializations
       if (stateTransitionLock.current) {
         return;
       }
       
-      if (message.type === "OPPORTUNITY_DETECTED") {
+      stateTransitionLock.current = true;
       
-        const newId = message.opportunityId;
-        if (
-          newId &&
-          newId !== currentOpportunityId &&
-          newId !== lastOpportunityIdRef.current &&
-          !stateTransitionLock.current
-        ) {
-          setCurrentOpportunityId(newId); // 🔁 this will trigger the fetch via useEffect
+      // Check Supabase connection but don't fail if there's an issue
+      try {
+        const supabaseStatus = await checkSupabaseConnection();
+        if (!supabaseStatus.connected) {
+          console.warn("Supabase connection issue:", supabaseStatus.error);
+          // Continue anyway - we can still use the app with limited functionality
+        }
+      } catch (supabaseError) {
+        console.warn("Error checking Supabase connection:", supabaseError);
+        // Continue anyway
+      }
+      
+      // Notify service worker that popup is open
+      chrome.runtime.sendMessage({ type: "POPUP_OPENED" }).catch((err) => {
+        console.warn("[Popup] POPUP_OPENED:", err?.message || err);
+      });
+      
+      // Clear any existing errors
+      setError(null);
+      setDebugInfo(null);
+      
+      // Check CRM tab status
+      await checkCrmTabStatus();
+
+      // Get organization ID if we don't have one yet
+      if (!organizationId) {
+        try {
+          const orgId = await getCurrentOrgId();
+          if (orgId) {
+            setOrganizationId(orgId);
+            chrome.storage.local.set({ "organizationId": orgId });
+          }
+        } catch (orgError) {
+          console.warn("Error getting organization ID:", orgError);
         }
       }
       
-      if (message.type === "OPPORTUNITY_CLEARED") {
+      // Check if already logged in
+      const loggedIn = await isLoggedIn();
+      
+      if (loggedIn) {
+        // Get stored token
+        const { accessToken } = await chrome.storage.local.get(["accessToken"]);
+        setAccessToken(accessToken);
         
-        // Prevent immediate re-fetch if already in list view
-        if (!currentOpportunityId && !currentOpportunity) {
-          return;
+        // Get user information
+        const userData = await getCurrentUser();
+        setUser(userData);
+        
+        try {
+          // Try to initialize subscriptions but don't fail if it doesn't work
+          await initializeSubscriptions();
+        } catch (subscriptionError) {
+          console.warn("Error initializing subscriptions, continuing with free tier:", subscriptionError);
+          setSubscription({ status: 'free', isActive: true });
         }
-    
-        // Use a more controlled reset
+                  
+        // Try to get current opportunity ID
+        try {
+          const oppId = await getCurrentOpportunityId();
+          
+          // Only update state if ID actually changed to prevent loops
+          if (oppId) {
+            setCurrentOpportunityId(oppId); // ✅ Triggers the centralized fetch logic in useEffect
+          } else {
+            await handleFetchOpportunities(accessToken);
+          }
+          
+          // Fetch data
+          if (oppId) {
+            // Set a temporary loading state for better UX
+            setCurrentOpportunity({
+              opportunityid: oppId,
+              name: "Loading...",
+              loading: true
+            });
+                          
+            // Fetch the opportunity details with a small timeout to ensure state is updated
+            setTimeout(async () => {
+              try {
+                await fetchOpportunityDetails(
+                  accessToken,
+                  oppId,
+                  (isLoading) => setLoading(isLoading),
+                  setError,
+                  setCurrentOpportunity,
+                  setActivities
+                );
+
+                lastOpportunityIdRef.current = oppId;
+
+              } catch (fetchError) {
+                console.error("[Popup.jsx] Error loading initial opportunity:", fetchError);
+                // If there's an error, fall back to the list view
+                setCurrentOpportunity(null);
+                setCurrentOpportunityId(null);
+                await handleFetchOpportunities(accessToken);
+              }
+            }, 100);
+          } else {
+            await handleFetchOpportunities(accessToken);
+          }
+          
+          // Also fetch closed opportunities for analytics
+          await handleFetchClosedOpportunities(accessToken);
+        } catch (idError) {
+          console.warn("Error getting opportunity ID:", idError);
+          await handleFetchOpportunities(accessToken);
+          await handleFetchClosedOpportunities(accessToken);
+        }
+      }
+
+      // Get the auto-open preference
+      chrome.storage.local.get(['autoOpen'], (result) => {
+        setAutoOpen(result.autoOpen !== false);
+      });
+    } catch (error) {
+      console.error("Initialization error:", error);
+      setError("Failed to initialize extension: " + error.message);
+      setDebugInfo({
+        errorType: "Initialization Error",
+        message: error.message,
+        timestamp: new Date().toISOString(),
+      });
+    } finally {
+      // Release the lock
+      stateTransitionLock.current = false;
+    }
+  }
+  
+  initialize();
+  
+  // Set up interval to check CRM tab status regularly
+  const crmStatusInterval = setInterval(checkCrmTabStatus, 2000);
+
+  // Set up polling for opportunity ID changes with debouncing
+  const storageCheckInterval = setInterval(() => {
+    if (stateTransitionLock.current) return;
+  
+    chrome.storage.local.get(['currentOpportunityId', 'lastUpdated', 'currentOrgId'], (result) => {
+      const newId = result.currentOpportunityId;
+  
+      // More conservative check for clearing opportunity
+      if (!newId && (currentOpportunityId || lastOpportunityIdRef.current)) {
+        // Prevent multiple simultaneous resets
+        if (stateTransitionLock.current) return;
+        
         stateTransitionLock.current = true;
         
         setCurrentOpportunityId(null);
         setCurrentOpportunity(null);
         lastOpportunityIdRef.current = null;
-    
-        // Add a slight delay to prevent immediate re-fetch
-        setTimeout(async () => {
-          try {
-            await handleFetchOpportunities(accessToken);
-          } catch (error) {
-            console.error("[Popup.jsx] Error refetching opportunities:", error);
-          } finally {
-            stateTransitionLock.current = false;
-          }
-        }, 300);
+        
+        if (accessToken) {
+          setTimeout(async () => {
+            try {
+              await handleFetchOpportunities(accessToken);
+            } catch (error) {
+              console.error("[Popup.jsx] Error refetching opportunities:", error);
+            } finally {
+              stateTransitionLock.current = false;
+            }
+          }, 500);
+        }
+        return;
       }
-    };
-    
-    
-    chrome.runtime.onMessage.addListener(handleMessage);
-    
-    // Clean up
-    return () => {
-      chrome.runtime.onMessage.removeListener(handleMessage);
-      clearInterval(storageCheckInterval);
-      
-      // Clear any pending timeouts
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-      }
-    };
-  }, [accessToken, organizationId, currentOpportunityId, JSON.stringify(user), JSON.stringify(subscription)]);
+    });
+  }, 2000); 
+  
+  // Listen for opportunity detection from content script
+  const handleMessage = (message) => {
+    // Listen for CRM tab open  
+    if (message.type === "TAB_CONTEXT_UPDATE") {
+      setIsOnCrmTab(message.isCRM);
+      return;
+    }
 
+    // Prevent concurrent or redundant operations
+    if (stateTransitionLock.current) {
+      return;
+    }
+    
+    if (message.type === "OPPORTUNITY_DETECTED") {
+      const newId = message.opportunityId;
+      if (
+        newId &&
+        newId !== currentOpportunityId &&
+        newId !== lastOpportunityIdRef.current &&
+        !stateTransitionLock.current
+      ) {
+        setCurrentOpportunityId(newId); // 🔁 this will trigger the fetch via useEffect
+      }
+    }
+    
+    if (message.type === "OPPORTUNITY_CLEARED") {
+      // Prevent immediate re-fetch if already in list view
+      if (!currentOpportunityId && !currentOpportunity) {
+        return;
+      }
+  
+      // Use a more controlled reset
+      stateTransitionLock.current = true;
+      
+      setCurrentOpportunityId(null);
+      setCurrentOpportunity(null);
+      lastOpportunityIdRef.current = null;
+  
+      // Add a slight delay to prevent immediate re-fetch
+      setTimeout(async () => {
+        try {
+          await handleFetchOpportunities(accessToken);
+        } catch (error) {
+          console.error("[Popup.jsx] Error refetching opportunities:", error);
+        } finally {
+          stateTransitionLock.current = false;
+        }
+      }, 300);
+    }
+  };
+  
+  // Add the message listener
+  chrome.runtime.onMessage.addListener(handleMessage);
+  
+  // This is the cleanup function that runs when the component unmounts
+  return () => {
+    chrome.runtime.onMessage.removeListener(handleMessage);
+    clearInterval(storageCheckInterval);
+    clearInterval(crmStatusInterval);
+    
+    // Clear any pending timeouts
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+  };
+}, [accessToken, organizationId, currentOpportunityId, JSON.stringify(user), JSON.stringify(subscription)]);
+
+  // Set up specific effect to handle opportunity ID changes
+  useEffect(() => {
+    // Skip if there's no token or no opportunity ID
+    if (!accessToken || !currentOpportunityId) return;
+    
+    // Skip if lock is active
+    if (stateTransitionLock.current) return;
+    
+    // Skip if opportunity is already loaded
+    if (currentOpportunity?.opportunityid === currentOpportunityId) return;
+    
+    // Fetch opportunity details when ID changes
+    handleFetchOpportunityDetails(accessToken, currentOpportunityId);
+    
+    // Remember this ID to prevent duplicate fetches
+    lastOpportunityIdRef.current = currentOpportunityId;
+    
+  }, [accessToken, currentOpportunityId]);
+  
   // Set up styling for the app container
   useEffect(() => {
     // Set title
@@ -605,12 +629,15 @@ const Popup = () => {
       }
       
       stateTransitionLock.current = true;
+
+      // Check if we're on a CRM tab
+      await checkCrmTabStatus();
       
       // Check for organization ID first
       if (!organizationId) {
         const orgId = await getCurrentOrgId();
         if (!orgId) {
-          setError("Please navigate to your Dynamics CRM environment first to use this extension.");
+          setError("Please navigate to your Dynamics Sales environment first to use this extension.");
           stateTransitionLock.current = false;
           return;
         }
@@ -647,7 +674,6 @@ const Popup = () => {
         }
       } catch (loginError) {
         if (loginError.message && loginError.message.includes("did not approve")) {
-          // console.log("[Popup.jsx] User cancelled the login dialog");
           setError("Authentication cancelled. Please try again.");
         } else {
           console.error("Login failed:", loginError);
@@ -675,7 +701,7 @@ const Popup = () => {
       const tabs = await chrome.tabs.query({ url: "*://*.crm.dynamics.com/*" });
       
       if (!tabs || tabs.length === 0) {
-        setError("No Dynamics CRM tab found");
+        setError("No Dynamics Sales tab found");
         return;
       }
       
@@ -756,7 +782,7 @@ const Popup = () => {
       const tabs = await chrome.tabs.query({ url: "*://*.crm.dynamics.com/*" });
       
       if (!tabs || tabs.length === 0) {
-        setError("No Dynamics CRM tab found");
+        setError("No Dynamics Sales tab found");
         return;
       }
       
@@ -828,12 +854,26 @@ const Popup = () => {
    */
   const renderContent = () => {
     try {
-
+      // Check if we're on a CRM tab first
       if (!isOnCrmTab) {
         return (
           <div style={{ padding: "20px", textAlign: "center" }}>
             <h3>Lens is inactive</h3>
-            <p>Please switch to your Dynamics CRM tab to use this extension.</p>
+            <p>Please switch to your Dynamics Sales tab to use this extension.</p>
+            <button 
+              onClick={() => checkCrmTabStatus()}
+              style={{
+                marginTop: "20px",
+                padding: "10px 16px",
+                backgroundColor: "#0078d4",
+                color: "white",
+                border: "none",
+                borderRadius: "4px",
+                cursor: "pointer"
+              }}
+            >
+              Refresh Status
+            </button>
           </div>
         );
       }
@@ -843,7 +883,7 @@ const Popup = () => {
         return (
           <div style={{ padding: "20px", textAlign: "center" }}>
             <h3>Organization Not Detected</h3>
-            <p>Please navigate to your Dynamics CRM environment first to use this extension.</p>
+            <p>Please navigate to your Dynamics Sales environment first to use this extension.</p>
             <p>The extension will automatically detect your organization ID from the URL.</p>
             <p style={{ marginTop: "20px", fontWeight: "bold" }}>
               Your URL should look like: https://yourorgname.crm.dynamics.com/...
@@ -861,6 +901,21 @@ const Popup = () => {
               }}
             >
               Go to Power Apps
+            </button>
+            <button 
+              onClick={() => checkCrmTabStatus()}
+              style={{
+                marginTop: "20px",
+                marginLeft: "10px",
+                padding: "10px 16px",
+                backgroundColor: "#5c5c5c",
+                color: "white",
+                border: "none",
+                borderRadius: "4px",
+                cursor: "pointer"
+              }}
+            >
+              Check Again
             </button>
           </div>
         );
@@ -969,7 +1024,7 @@ const Popup = () => {
         onDismiss={() => setError(null)} 
       />
 
-      {renderContent()}
+{renderContent()}
       
       {/* Debug panel */}
       <div style={{ 
@@ -982,22 +1037,23 @@ const Popup = () => {
         backgroundColor: "rgba(255,255,255,0.8)"
       }}>
         <details>
-        <summary>Debug</summary>
-        <div>Org ID: {organizationId || 'Not detected'}</div>
-        <div>Access Token: {accessToken ? 'Yes' : 'No'}</div>
-        <div>User: {user?.email || 'None'}</div>
-        <div>Subscription: {subscription?.status || 'None'}</div>
-        <div>Current Opp ID: {currentOpportunityId || 'None'}</div>
-        <div>Matched Opp ID: {currentOpportunity?.opportunityid === currentOpportunityId ? 'Yes' : 'No'}</div>
-        <div>Last Opp Ref: {lastOpportunityIdRef.current || 'None'}</div>
-        <div>Lock: {stateTransitionLock.current ? 'Active' : 'Inactive'}</div>
-        <div>Loading: {loading ? 'Yes' : 'No'}</div>
-        <div>Opps: {opportunities.length}</div>
-        <div>Closed Opps: {closedOpportunities.length}</div>
+          <summary>Debug</summary>
+          <div>CRM Tab: {isOnCrmTab ? 'Yes' : 'No'}</div>
+          <div>Org ID: {organizationId || 'Not detected'}</div>
+          <div>Access Token: {accessToken ? 'Yes' : 'No'}</div>
+          <div>User: {user?.email || 'None'}</div>
+          <div>Subscription: {subscription?.status || 'None'}</div>
+          <div>Current Opp ID: {currentOpportunityId || 'None'}</div>
+          <div>Matched Opp ID: {currentOpportunity?.opportunityid === currentOpportunityId ? 'Yes' : 'No'}</div>
+          <div>Last Opp Ref: {lastOpportunityIdRef.current || 'None'}</div>
+          <div>Lock: {stateTransitionLock.current ? 'Active' : 'Inactive'}</div>
+          <div>Loading: {loading ? 'Yes' : 'No'}</div>
+          <div>Opps: {opportunities.length}</div>
+          <div>Closed Opps: {closedOpportunities.length}</div>
         </details>
       </div>
     </div>
   );
 };
 
-export default Popup;
+export default Popup

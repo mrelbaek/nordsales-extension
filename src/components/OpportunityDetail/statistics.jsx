@@ -39,7 +39,7 @@ const Statistics = ({
   
   // Calculate days until closing
   const daysUntilClose = opportunity.estimatedclosedate ? 
-    calculateDaysBetween(new Date(), opportunity.estimatedclosedate) : null;
+    calculateDaysBetween(new Date(), opportunity.estimatedclosedate, true) : null;
   
   // Calculate days since last contact
   const daysSinceLastContact = calculateDaysSinceLastContact(activities)?.days || 0;

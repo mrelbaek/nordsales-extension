@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite --config vite.dev.config.mjs",
     "build": "node create-build-manifest.js && vite build && node post-build.js",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:chrome": "node build.js chrome",
+    "build:edge": "node build.js edge"
   },
   "dependencies": {
     "@azure/msal-browser": "^4.8.0",

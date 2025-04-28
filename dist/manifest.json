@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Lens",
-  "version": "1.0.0",
-  "description": "Chrome extension for Dynamics 365 Sales",
+  "name": "Lens for Dynamics 365 Sales",
+  "version": "1.0.1",
+  "description": "Lightweight and secure companion for Dynamics 365 Sales. Visualize deals, uncover delays, and stay on top of every opportunity.",
   "action": {
     "default_title": "Lens"
   },

@@ -1,33 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';  // Add useRef here
 import Header from '../Header';
 import OpportunityCard from './OpportunityCard';
-import ListAnalytics from './Analytics'; 
+import ListAnalytics from './Analytics';
 import SalesCycleChart from './SalesCycleChart';
 import AccordionSection from '../common/AccordionSection';
 import WinRate from './WinRate';
 import UserActivityChart from './UserActivityChart';
 import WonLostChart from './WonLostChart';
-import { PiIntersect } from "react-icons/pi";
+import { PiIntersect, PiSortAscending, PiSortDescending, PiCaretDown } from "react-icons/pi";
 import SubscriptionStatus from '../SubscriptionStatus';
 import FeatureGate from '../FeatureGate';
 import ProPill from '../common/ProPill';
-
+import { sortOpportunities } from '../../utils/activityUtils';
 
 
 /**
  * Opportunity list component
- * 
- * @param {Object} props - Component props
- * @param {Array} props.opportunities - List of opportunities
- * @param {boolean} props.loading - Whether data is loading
- * @param {Function} props.onLogout - Function to call when logout button is clicked
- * @param {Function} props.onOpportunitySelect - Function to call when an opportunity is selected
- * @param {Array} props.closedOpportunities - Closed opportunities data
- * @param {Function} props.toggleAutoOpen - Function to call when auto-open toggle is clicked
- * @param {boolean} props.autoOpen - Whether auto-open is enabled
- * @param {Function} props.onFetchMyOpenOpportunities - Function to fetch user's open opportunities
- * @param {string} props.accessToken - Access token for API calls
- * @returns {JSX.Element} Opportunity list component
  */
 const OpportunityList = ({ 
   opportunities = [], 
@@ -49,12 +37,65 @@ const OpportunityList = ({
     activities: false,
     wonLost: false
   });
+  
+  // Add sort state
+  const [sortOption, setSortOption] = useState('lastActivity');
+  const [showSortOptions, setShowSortOptions] = useState(false);
+  const [sortDirection, setSortDirection] = useState('asc');
+  const [sortedOpportunities, setSortedOpportunities] = useState([]);
+  
+  // Create a ref for the dropdown
+  const sortDropdownRef = useRef(null);
+  
+  // Update sorted opportunities when original opportunities or sort option changes
+  useEffect(() => {
+    setSortedOpportunities(sortOpportunities(opportunities, sortOption, sortDirection));
+  }, [opportunities, sortOption, sortDirection]);
+  
+  // Handle clicks outside dropdown
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (sortDropdownRef.current && !sortDropdownRef.current.contains(event.target)) {
+        setShowSortOptions(false);
+      }
+    }
+    
+    // Add event listener when dropdown is shown
+    if (showSortOptions) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    
+    // Clean up
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showSortOptions]);
 
   const toggleAccordion = (section) => {
     setAccordionState({
       ...accordionState,
       [section]: !accordionState[section]
     });
+  };
+  
+  // Handle sort option change
+  const handleSortChange = (option) => {
+    setSortOption(option);
+    setShowSortOptions(false);
+  };
+
+  // Toggle sort direction
+  const toggleSortDirection = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+  };
+
+  // Updated function to get sort direction icon
+  const getSortDirectionIcon = () => {
+    return sortDirection === 'asc' 
+      ? <PiSortAscending size={14} /> 
+      : <PiSortDescending size={14} />;
   };
 
   // Calculate opportunity statistics
@@ -79,6 +120,137 @@ const OpportunityList = ({
         return acc + Math.floor((closedDate - createdDate) / (1000 * 60 * 60 * 24));
       }, 0) / closedOpportunities.length)
     : 0;
+
+  // Get sort option display text
+  const getSortOptionText = () => {
+    switch (sortOption) {
+      case 'value': return 'Value';
+      case 'closingDate': return 'Closing Date';
+      case 'lastActivity': return 'Last Activity';
+      default: return 'Last Activity';
+    }
+  };
+
+  // Render the dropdown with sort options
+  const renderSortDropdown = () => (
+    <div 
+      ref={sortDropdownRef}
+      style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '4px' }}
+      onClick={(e) => e.stopPropagation()}
+    >
+
+      {/* Direction toggle button */}
+      <button
+        onClick={toggleSortDirection}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: 'white',
+          border: '1px solid #ddd',
+          borderRadius: '4px',
+          padding: '4px',
+          fontSize: '12px',
+          cursor: 'pointer',
+          width: '24px',
+          height: '24px'
+        }}
+        title={sortDirection === 'asc' 
+          ? 'Currently showing oldest first - Click to show newest first' 
+          : 'Currently showing newest first - Click to show oldest first'}
+      >
+        {getSortDirectionIcon()}
+      </button>
+
+      {/* Sort option button */}
+      <button
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setShowSortOptions(!showSortOptions);
+        }}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          backgroundColor: 'white',
+          border: '1px solid #ddd',
+          borderRadius: '4px',
+          padding: '4px 8px',
+          fontSize: '12px',
+          cursor: 'pointer'
+        }}
+      >
+        {getSortOptionText()}
+        <PiCaretDown size={12} style={{ marginLeft: '4px' }} />
+      </button>
+      
+      {showSortOptions && (
+        <div 
+          style={{
+            position: 'absolute',
+            right: 0,
+            top: '100%',
+            marginTop: '4px',
+            backgroundColor: 'white',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+            borderRadius: '4px',
+            zIndex: 100,
+            width: '150px',
+            border: '1px solid #eee'
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div 
+            style={{
+              padding: '8px 12px',
+              borderBottom: '1px solid #eee',
+              fontSize: '12px',
+              cursor: 'pointer',
+              backgroundColor: sortOption === 'value' ? '#f0f7ff' : 'white'
+            }}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleSortChange('value');
+            }}
+          >
+            Value
+          </div>
+          <div 
+            style={{
+              padding: '8px 12px',
+              borderBottom: '1px solid #eee',
+              fontSize: '12px',
+              cursor: 'pointer',
+              backgroundColor: sortOption === 'closingDate' ? '#f0f7ff' : 'white'
+            }}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleSortChange('closingDate');
+            }}
+          >
+            Closing Date
+          </div>
+          <div 
+            style={{
+              padding: '8px 12px',
+              fontSize: '12px',
+              cursor: 'pointer',
+              backgroundColor: sortOption === 'lastActivity' ? '#f0f7ff' : 'white'
+            }}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleSortChange('lastActivity');
+            }}
+          >
+            Last Activity
+          </div>
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", width: "100%", overflow: "hidden", height: "100%", background: "#ededed" }}>
@@ -216,19 +388,20 @@ const OpportunityList = ({
       {/* Opportunities List Section */}
       <div style={{ padding: "12px 16px 0px 16px" }}>
         <AccordionSection
-          title={`My Open Opportunities (${opportunities.length})`}
+          title={`Open Opportunities`}
           isOpen={accordionState.opportunities}
           onToggle={() => toggleAccordion('opportunities')}
+          rightElement={renderSortDropdown()}
         >
           {loading ? (
             <div style={{ textAlign: "center", padding: "20px" }}>
               <p>Loading...</p>
             </div>
-          ) : opportunities.length === 0 ? (
+          ) : sortedOpportunities.length === 0 ? (
             <p>No opportunities found.</p>
           ) : (
             <div>
-              {opportunities.map((opportunity) => (
+              {sortedOpportunities.map((opportunity) => (
                 <OpportunityCard
                   key={opportunity.opportunityid}
                   opportunity={opportunity}

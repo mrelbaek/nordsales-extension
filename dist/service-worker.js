@@ -1,12 +1,14 @@
 const DEBUG = false;
 
-// Modified service-worker.js with direct tab navigation
+// Modified service-worker.js with improved tab detection
 if (DEBUG) console.log("NordSales service worker initialized");
 
 // Storage for polling intervals by tab ID
 const tabPollingIntervals = {};
 // Track content script injection status
 const contentScriptInjected = {};
+// Track CRM tabs
+const crmTabs = new Set();
 
 // Helper function to extract organization ID from URL
 function extractOrgIdFromUrl(url) {
@@ -20,13 +22,76 @@ function extractOrgIdFromUrl(url) {
   return null;
 }
 
+// Helper function to check if a URL is a Dynamics CRM URL
+function isDynamicsCrmUrl(url) {
+  return url && url.includes('crm.dynamics.com');
+}
+
+// Helper function to update CRM status and notify popup
+async function updateCrmStatus() {
+  try {
+    // Get the active tab
+    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    
+    if (!activeTab) return;
+    
+    const isCRM = isDynamicsCrmUrl(activeTab.url);
+    
+    // Send message to popup about CRM context
+    chrome.runtime.sendMessage({
+      type: 'TAB_CONTEXT_UPDATE',
+      isCRM
+    }).catch(() => {
+      // Popup might not be open, that's fine
+    });
+    
+    // Update badge based on auto-open setting
+    if (isCRM) {
+      chrome.storage.local.get(['autoOpen'], (result) => {
+        const autoOpen = result.autoOpen !== false;
+        if (autoOpen) {
+          chrome.action.setBadgeText({ text: "!" });
+          chrome.action.setBadgeBackgroundColor({ color: "#0078d4" });
+        }
+      });
+      
+      // Store the organization ID
+      const orgId = extractOrgIdFromUrl(activeTab.url);
+      if (orgId) {
+        chrome.storage.local.set({ 
+          currentOrgId: orgId,
+          lastOrgIdUpdated: Date.now()
+        });
+      }
+      
+      // Mark as CRM tab and start polling
+      crmTabs.add(activeTab.id);
+      
+      // Mark as needing injection
+      contentScriptInjected[activeTab.id] = false;
+      
+      // Ensure content script is injected
+      ensureContentScriptInjected(activeTab.id).then(() => {
+        startOpportunityPolling(activeTab.id);
+      }).catch((err) => {
+        if (DEBUG) console.error("Error injecting content script:", err);
+      });
+    } else {
+      // Clear badge if not on CRM
+      chrome.action.setBadgeText({ text: "" });
+    }
+  } catch (error) {
+    if (DEBUG) console.warn("Error updating CRM status:", error);
+  }
+}
+
 // Function to navigate to an opportunity in a given tab
 async function navigateToOpportunity(tabId, opportunityId) {
   try {
     // Get information about the tab
     const tab = await chrome.tabs.get(tabId);
     
-    if (!tab || !tab.url || !tab.url.includes('crm.dynamics.com')) {
+    if (!tab || !tab.url || !isDynamicsCrmUrl(tab.url)) {
       if (DEBUG) console.warn("Tab is not a Dynamics CRM tab");
       return false;
     }
@@ -89,7 +154,7 @@ async function ensureContentScriptInjected(tabId) {
   try {
     const tab = await chrome.tabs.get(tabId);
     
-    if (!tab || !tab.url || !tab.url.includes('crm.dynamics.com')) {
+    if (!tab || !tab.url || !isDynamicsCrmUrl(tab.url)) {
       return false;
     }
     
@@ -117,10 +182,11 @@ async function pollForOpportunityChanges(tabId) {
   try {
     const tab = await chrome.tabs.get(tabId);
     
-    if (!tab || !tab.url || !tab.url.includes('crm.dynamics.com')) {
+    if (!tab || !tab.url || !isDynamicsCrmUrl(tab.url)) {
       clearInterval(tabPollingIntervals[tabId]);
       delete tabPollingIntervals[tabId];
       delete contentScriptInjected[tabId];
+      crmTabs.delete(tabId);
       return;
     }
     
@@ -185,6 +251,7 @@ async function pollForOpportunityChanges(tabId) {
     clearInterval(tabPollingIntervals[tabId]);
     delete tabPollingIntervals[tabId];
     delete contentScriptInjected[tabId];
+    crmTabs.delete(tabId);
   }
 }
 
@@ -199,44 +266,28 @@ function startOpportunityPolling(tabId) {
   }, 2000); // Poll every 2 seconds
 }
 
+// Listen for tab updates - when a tab changes URL
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === 'complete') {
-    const isCRM = tab.url?.includes('crm.dynamics.com');
-
-    // Send context update to popup
-    chrome.runtime.sendMessage({
-      type: 'TAB_CONTEXT_UPDATE',
-      isCRM
-    }).catch(() => {});
-
+    const isCRM = isDynamicsCrmUrl(tab.url);
+    
+    // Track CRM tabs
     if (isCRM) {
-      const orgId = extractOrgIdFromUrl(tab.url);
-      if (orgId) {
-        chrome.storage.local.set({ currentOrgId: orgId });
-      }
-
-      // Mark as needing injection
-      contentScriptInjected[tabId] = false;
-      
-      ensureContentScriptInjected(tabId).then(() => {
-        startOpportunityPolling(tabId);
-      }).catch((err) => {
-        console.error("Error injecting content script:", err);
-      });
-
-      chrome.storage.local.get(['autoOpen'], (result) => {
-        const autoOpen = result.autoOpen !== false;
-        if (autoOpen) {
-          chrome.action.setBadgeText({ text: "!" });
-          chrome.action.setBadgeBackgroundColor({ color: "#0078d4" });
-        }
-      });
+      crmTabs.add(tabId);
     } else {
-      chrome.action.setBadgeText({ text: "" });
+      crmTabs.delete(tabId);
     }
+    
+    // Update active tab status
+    updateCrmStatus();
   }
 });
 
+// Listen for tab activation - when user switches tabs
+chrome.tabs.onActivated.addListener(async (activeInfo) => {
+  // Update CRM status when switching tabs
+  updateCrmStatus();
+});
 
 // Clean up polling when tabs are closed
 chrome.tabs.onRemoved.addListener((tabId) => {
@@ -244,6 +295,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
     clearInterval(tabPollingIntervals[tabId]);
     delete tabPollingIntervals[tabId];
     delete contentScriptInjected[tabId];
+    crmTabs.delete(tabId);
   }
 });
 
@@ -295,56 +347,32 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   
   if (message.type === "POPUP_OPENED") {
-    chrome.tabs.query({ active: true, url: "*://*.crm.dynamics.com/*" }, (tabs) => {
-      if (tabs && tabs.length > 0) {
-        const currentDynamicsTab = tabs[0].id;
-  
-        chrome.tabs.get(currentDynamicsTab).then(tab => {
-          const orgId = extractOrgIdFromUrl(tab.url);
-          if (orgId) {
-            chrome.storage.local.set({ currentOrgId: orgId });
-          }
-  
-          // Mark as needing injection
-          contentScriptInjected[currentDynamicsTab] = false;
-          
-          // Ensure content script is injected
-          ensureContentScriptInjected(currentDynamicsTab).then(() => {
-            chrome.tabs.sendMessage(currentDynamicsTab, { type: "CHECK_OPPORTUNITY_ID" }, response => {
-              if (chrome.runtime.lastError) {
-                console.warn("Error communicating with content script:", chrome.runtime.lastError.message);
-                return;
-              }
-  
-              if (response && response.opportunityId) {
-                chrome.storage.local.set({
-                  currentOpportunityId: response.opportunityId,
-                  lastUpdated: Date.now()
-                });
-  
-                chrome.runtime.sendMessage({
-                  type: "OPPORTUNITY_DETECTED",
-                  opportunityId: response.opportunityId,
-                  organizationId: response.organizationId || orgId
-                }).catch(err => {
-                  if (DEBUG) console.warn("Could not send to side panel:", err);
-                });
-              }
-            });
-          }).catch(err => {
-            console.error("Error injecting content script from POPUP_OPENED:", err);
-          });
-  
-        }).catch(err => {
-          console.warn("Tab no longer exists:", err);
-        });
-      }
-    });
-  
+    // Check for active CRM tab and update status immediately
+    updateCrmStatus();
+    
     sendResponse({ success: true });
     return true;
   }
   
+  // Get current CRM status
+  if (message.type === "GET_CRM_STATUS") {
+    chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
+      if (tabs && tabs.length > 0) {
+        const activeTab = tabs[0];
+        const isCRM = isDynamicsCrmUrl(activeTab.url);
+        
+        sendResponse({ 
+          success: true, 
+          isCRM,
+          orgId: isCRM ? extractOrgIdFromUrl(activeTab.url) : null
+        });
+      } else {
+        sendResponse({ success: false, isCRM: false });
+      }
+    });
+    
+    return true;
+  }
   
   // Navigate to opportunity in the current tab
   if (message.type === "NAVIGATE_TO_OPPORTUNITY") {
@@ -377,6 +405,15 @@ chrome.runtime.onInstalled.addListener(() => {
   chrome.storage.local.get(['autoOpen', 'currentOrgId'], (result) => {
     if (result.autoOpen === undefined) {
       chrome.storage.local.set({ autoOpen: true });
+    }
+  });
+});
+
+// Do an initial check for CRM tabs on service worker startup
+chrome.tabs.query({}, (tabs) => {
+  tabs.forEach(tab => {
+    if (isDynamicsCrmUrl(tab.url)) {
+      crmTabs.add(tab.id);
     }
   });
 });
